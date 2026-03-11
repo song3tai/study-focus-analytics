@@ -4,3 +4,5 @@ __pycache__/
 output/*.mp4
 output/*.avi
 .DS_Store
+.ultralytics/
+*.pt

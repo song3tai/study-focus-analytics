@@ -1,52 +1,55 @@
 # AI Context: video_frame_processor
 
 ## Project Summary
-`video_frame_processor` is a v1 video processing project that reads video frames, applies one selected processing mode, optionally previews frames in a UI window, and can save processed output video.
+This project has been upgraded from a simple frame-processing demo to an AI video analysis prototype with a modular pipeline architecture.
 
 ## Current Status
-- Core pipeline is implemented and runnable
-- Current version is focused on engineering baseline, not model inference
-- Code has been pushed to GitHub and is actively maintainable
+- Pipeline architecture is active (`main -> pipeline -> modules`)
+- YOLOv8 detection mode is integrated
+- Existing classic modes remain supported (`original`, `gray`, `edge`)
+- App supports preview, headless run, and optional output writing
 
 ## Current Features
-- Frame-by-frame decoding via OpenCV
-- Mode support:
+- Video frame reading from file input
+- Mode-based processing:
   - `original`
   - `gray`
   - `edge`
-- Optional display window for processed frames
-- Optional output writing to `output/processed_output.mp4`
-- Headless-safe execution with `--no-display` and `DISPLAY` fallback
+  - `detect` (YOLOv8 object detection)
+- Annotated object boxes/labels in detect mode
+- Optional save to output video
+- Headless-safe execution (`--no-display`)
 
 ## Project Structure (Core)
-- `src/main.py`: CLI parsing and runtime orchestration
-- `src/video_reader.py`: `VideoCapture` wrapper and metadata access
-- `src/frame_processor.py`: mode-specific frame transformations
-- `src/utils.py`: path resolution and writer/helper utilities
-- `docs/design.md`: design rationale and architecture notes
+- `src/main.py`: parse args, initialize dependencies, start pipeline
+- `src/pipeline.py`: run frame loop and route mode behavior
+- `src/video_reader.py`: source frame reading and metadata
+- `src/frame_processor.py`: non-AI processing logic
+- `src/ai_detector.py`: AI model loading and inference
+- `src/video_writer.py`: output writing abstraction
+- `src/config.py`: default runtime configuration
+- `src/utils.py`: shared helper utilities
 
 ## Tech Stack
 - Python 3.10+
-- OpenCV (`opencv-python`)
-- NumPy (`numpy`)
+- OpenCV
+- NumPy
+- Ultralytics YOLOv8
 
 ## Development Rules
-- Keep module boundaries stable:
-  - orchestration in `main.py`
-  - I/O in `video_reader.py`
-  - processing logic in `frame_processor.py`
-- Keep `FrameProcessor` outputs in BGR format for pipeline consistency
-- Add new processing modes without breaking existing CLI behavior
-- Avoid adding setup/run instructions here; keep user-facing execution docs in `README.md`
-- Update `docs/design.md` when architecture or design decisions change
+- Keep `main.py` lightweight; business runtime flow belongs in `pipeline.py`
+- Keep model initialization inside `AIDetector`; never reload model per frame
+- Preserve BGR frame outputs for display/write compatibility
+- Extend functionality by adding modules, not by inflating one file
+- Keep README user-focused; place architecture rationale in `docs/design.md`
 
 ## Roadmap / Next Steps
-- Add a mode extension pattern for model-based processors
-- Add test cases for mode correctness and path resolution
-- Support additional input sources (webcam/RTSP)
-- Introduce basic performance metrics collection
+- Add camera and RTSP/WebRTC input support
+- Add structured JSON detection output
+- Add tests for pipeline mode behavior and detector failure handling
+- Add optional high-performance inference backend integration
 
 ## Documentation Boundary
-- `README.md`: quick project entry for humans (what/how to run)
-- `docs/design.md`: architecture and decisions (why/how modules cooperate)
-- `docs/ai_context.md` (this file): current implementation context for AI coding assistants
+- `README.md`: user entry and run commands
+- `docs/design.md`: design rationale and architecture
+- `docs/ai_context.md`: implementation context for AI coding assistants

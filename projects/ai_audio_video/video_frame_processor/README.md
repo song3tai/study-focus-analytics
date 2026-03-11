@@ -1,34 +1,25 @@
 # video_frame_processor
 
 ## Project Overview
-`video_frame_processor` is a Python/OpenCV project for frame-by-frame video processing.
-It currently supports three processing modes (`original`, `gray`, `edge`), real-time preview, and optional processed video export.
+`video_frame_processor` is an AI video analysis prototype built with Python, OpenCV, and YOLOv8.
+It supports frame-by-frame processing, real-time preview, optional output saving, and object detection annotation.
 
 ## Features
-- Frame-by-frame video decoding with OpenCV
+- Video frame decoding with OpenCV
 - Processing modes:
-  - `original` (raw frame)
-  - `gray` (grayscale)
-  - `edge` (Canny edge detection)
-- Real-time UI window playback
-- Optional output saving to `output/processed_output.mp4`
-- Headless execution with `--no-display` (auto-disabled preview when `DISPLAY` is unavailable)
-- Safe runtime behavior: input validation and resource cleanup
-
-## Project Structure
-- `src/main.py`: CLI entrypoint and runtime orchestration
-- `src/video_reader.py`: video I/O and metadata access
-- `src/frame_processor.py`: frame transformation by mode
-- `src/utils.py`: path and writer helper utilities
-- `input/`: input videos
-- `output/`: generated output videos
-- `docs/design.md`: architecture and design decisions
-- `docs/ai_context.md`: AI-focused project context
+  - `original`
+  - `gray`
+  - `edge`
+  - `detect` (YOLOv8 object detection with bounding boxes and labels)
+- Real-time UI playback
+- Optional output video saving
+- Headless-safe execution with `--no-display`
 
 ## Requirements
 - Python 3.10+
 - OpenCV (`opencv-python`)
 - NumPy (`numpy`)
+- Ultralytics (`ultralytics`)
 
 ## Installation
 ```bash
@@ -41,27 +32,40 @@ python -m pip install -r requirements.txt
 
 ## Usage
 ```bash
-python src/main.py --input <video_file> --mode <original|gray|edge> [--save] [--no-display]
+python src/main.py --input <video_file> --mode <original|gray|edge|detect> [--save] [--no-display]
 ```
-
-Quick notes:
-- `--input` supports absolute path, relative path, or filename under `input/`
-- Press `ESC` to stop early when preview is enabled
-- Use `--no-display` in headless/WSL environments
 
 ## Example Commands
 ```bash
-python src/main.py --input input/sample.mp4 --mode original
-python src/main.py --input sample.mp4 --mode gray
+python src/main.py --input sample.mp4 --mode original
+python src/main.py --input sample.mp4 --mode gray --save
 python src/main.py --input sample.mp4 --mode edge --save
-python src/main.py --input sample.mp4 --mode gray --no-display --save
+python src/main.py --input sample.mp4 --mode detect --model yolov8n.pt --conf 0.35
+python src/main.py --input sample.mp4 --mode detect --save --no-display
 ```
 
+## Notes
+- `--input` supports absolute path, relative path, or filename under `input/`
+- `--output <path>` can override default output file (`output/processed_output.mp4`)
+- In `detect` mode, YOLO weights are loaded once and reused for all frames
+- First YOLO run may download model weights
+
+## Project Structure
+- `src/main.py`: CLI entrypoint and module wiring
+- `src/pipeline.py`: pipeline orchestration (`read -> process/detect -> display -> save`)
+- `src/video_reader.py`: video input abstraction
+- `src/frame_processor.py`: traditional frame processing modes
+- `src/ai_detector.py`: YOLOv8 model loading and inference
+- `src/video_writer.py`: output writer abstraction
+- `src/config.py`: centralized defaults
+- `src/utils.py`: common helper utilities
+
 ## Documentation
-- Design and architecture: `docs/design.md`
-- AI coding context and development constraints: `docs/ai_context.md`
+- Design details: `docs/design.md`
+- AI assistant context: `docs/ai_context.md`
 
 ## Future Improvements
-- Add model-based processors (detection/tracking/classification)
-- Add webcam/stream input adapters
-- Improve testing coverage and benchmark visibility
+- Webcam and RTSP/WebRTC input adapters
+- Structured JSON detection output
+- Performance profiling and benchmarking
+- C++ inference backend integration

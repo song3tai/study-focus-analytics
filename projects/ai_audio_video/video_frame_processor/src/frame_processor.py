@@ -1,8 +1,4 @@
-"""Frame processing module.
-
-Keeps processing logic isolated so future AI models can be added
-without changing reader/writer orchestration.
-"""
+"""Frame processing module for non-AI modes."""
 
 from __future__ import annotations
 
@@ -13,13 +9,10 @@ SUPPORTED_MODES = ("original", "gray", "edge")
 
 
 class FrameProcessor:
-    """Frame processing logic for v1 modes."""
+    """Frame processing logic for traditional modes."""
 
     def process_frame(self, frame: np.ndarray, mode: str) -> np.ndarray:
-        """Process one frame by selected mode.
-
-        Returns BGR output for consistent display and video writing.
-        """
+        """Process one frame by selected mode and return BGR output."""
         normalized_mode = mode.lower().strip()
 
         if normalized_mode == "original":
