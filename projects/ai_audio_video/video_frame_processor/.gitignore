@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-output/*.mp4
-output/*.avi
-.DS_Store
-.ultralytics/
-*.pt
