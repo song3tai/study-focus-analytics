@@ -1,112 +1,197 @@
-# video_frame_processor
+# Study Focus Analytics
 
-## Project Overview
-`video_frame_processor` is an AI video analysis prototype built with Python, OpenCV, and YOLOv8.
-It supports frame-by-frame processing, real-time preview, optional output saving for video files, and real-time object detection annotation for video files and live RTSP streams.
+## 项目简介
 
-## Features
-- Video frame decoding with OpenCV
-- Real-time RTSP stream capture with OpenCV
-- Processing modes:
-  - `original`
-  - `gray`
-  - `edge`
-  - `detect` (YOLOv8 object detection with bounding boxes and labels)
-- Real-time UI playback
-- FPS overlay in preview frames
-- Optional output video saving for file input
-- Headless-safe execution with `--no-display`
+Study Focus Analytics 是一个面向学生、自习者和远程办公者的学习 / 工作状态分析系统。项目基于视频输入，对单人场景中的在岗情况、离岗行为和专注状态进行分析，并输出学习 / 工作时长、离岗时长、专注度估计等结果，最终通过 Web UI 进行可视化展示。它适用于自习监督、个人复盘、学习时长记录、轻量级办公状态分析等场景。
 
-## Requirements
+## 项目目标
+
+项目当前聚焦构建一条清晰、可扩展的分析闭环：
+
+`视频输入` -> `人体检测` -> `场景特征提取` -> `在岗 / 离岗状态判断` -> `学习 / 工作时长统计` -> `专注度估计` -> `Web UI 展示`
+
+该闭环的目标不是单纯做目标检测，而是围绕“单人学习 / 工作场景”形成可解释、可统计、可展示的状态分析流程。
+
+## V1 范围
+
+### 当前版本聚焦
+
+V1 将重点收敛在“单人场景的基础状态分析”上，优先完成以下能力：
+
+- 基于摄像头、RTSP 流和本地视频文件的统一输入能力
+- 基于 YOLOv8 person 的单人检测能力
+- 面向桌面学习 / 工作场景的基础 ROI 与场景特征提取
+- `unknown / present / away / studying` 状态判断
+- 学习 / 工作时长与离岗时长统计
+- 基础专注度估计
+- 后端分析结果到 Web UI 的可视化链路
+
+### 当前版本暂不实现
+
+以下内容不属于当前 V1 的核心交付范围：
+
+- 多人场景分析
+- 复杂身份识别或个体追踪
+- 高精度姿态估计与细粒度动作识别
+- 完整生产级部署方案
+- 跨端 App
+- 复杂报表系统与长期数据平台化能力
+
+## 核心功能
+
+### 视频输入
+
+- 支持摄像头输入
+- 支持 RTSP 实时流输入
+- 支持本地录制视频输入
+- 统一为后续分析模块提供帧流数据
+
+### 人体检测
+
+- 基于 YOLOv8 person 类别进行单人检测
+- 为后续状态判断与场景特征提取提供目标区域基础信息
+- 当前聚焦单人学习 / 工作场景，不追求通用复杂场景覆盖
+
+### 状态分析
+
+系统计划围绕以下状态进行基础建模：
+
+- `unknown`：当前帧或当前时间段无法可靠判断状态
+- `present`：人物在位，但未满足明确学习 / 工作判定条件
+- `away`：人物离开主要工作区域或持续不在岗
+- `studying`：人物处于学习 / 工作中的有效在岗状态
+
+### 时长统计
+
+- 统计总学习 / 工作时长
+- 统计离岗时长
+- 支持基于状态机的时间累计逻辑
+- 为后续日报、复盘和趋势分析提供基础数据
+
+### 专注度估计
+
+- 基于在岗状态、连续时长、场景稳定性等特征构建基础 focus score
+- 当前阶段采用可解释、可迭代的规则或轻量模型方案
+- 不将“专注度”定义为绝对心理状态，而是作为场景行为层面的估计指标
+
+### Web UI 展示
+
+- 展示当前状态
+- 展示学习 / 工作累计时长与离岗时长
+- 展示基础专注度结果
+- 提供面向使用者的直观 Dashboard 视图
+
+## 技术栈
+
+### 后端
+
 - Python 3.10+
-- OpenCV (`opencv-python`)
-- NumPy (`numpy`)
-- Ultralytics (`ultralytics`)
+- OpenCV
+- NumPy
+- Ultralytics YOLOv8
+- FastAPI（计划）
 
-## Installation
-```bash
-cd /home/song3tai/phoenix/projects/ai_audio_video/video_frame_processor
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -U pip
-python -m pip install -r requirements.txt
+### 前端
+
+- React
+- TypeScript
+
+## 项目结构
+
+以下为规划中的 V1 目录结构：
+
+```text
+Study Focus Analytics/
+├── README.md
+├── requirements.txt
+├── docs/
+│   ├── design.md
+│   └── ai_context.md
+├── src/
+│   ├── main.py
+│   ├── config.py
+│   ├── utils.py
+│   ├── core/
+│   ├── io/
+│   ├── inference/
+│   ├── behavior/
+│   ├── pipeline/
+│   └── web/
+├── frontend/
+└── tests/
 ```
 
-## Usage
-```bash
-python3 src/main.py --input <video_file> --mode <original|gray|edge|detect> [--save] [--no-display]
-python3 src/main.py --rtsp-url --mode detect
-python3 src/main.py --rtsp-url <rtsp_url> --rtsp-transport auto --mode detect
-```
+目录职责将大致分为：
 
-## Example Commands
-```bash
-python3 src/main.py --rtsp-url --mode detect
-python3 src/main.py --input sample.mp4 --mode original
-python3 src/main.py --input sample.mp4 --mode gray --save
-python3 src/main.py --input sample.mp4 --mode edge --save
-python3 src/main.py --input sample.mp4 --mode detect --model yolov8n.pt --conf 0.35
-python3 src/main.py --input sample.mp4 --mode detect --save --no-display
-python3 src/main.py --rtsp-url rtsp://172.29.160.1:8554/live --rtsp-transport udp --mode detect
-python3 src/main.py --rtsp-url rtsp://192.168.3.3:8554/live --rtsp-transport auto --mode detect
-python3 src/main.py --rtsp-url rtsp://192.168.3.3:8554/live --mode original
-```
+- `src/io/`：视频输入与数据接入
+- `src/inference/`：人体检测与推理能力
+- `src/behavior/`：状态机、事件模型、时长统计、专注度估计
+- `src/pipeline/`：分析链路编排
+- `src/web/`：后端接口与 Web 服务接入
+- `frontend/`：React + TypeScript 前端展示层
+- `docs/`：设计文档与协作上下文文档
+- `tests/`：核心模块测试
 
-## Input Modes
-- Video file mode:
-  - Start with `--input <path>`
-  - Supports `original`, `gray`, `edge`, `detect`
-  - Supports `--save`
-- RTSP stream mode:
-  - Start with `--rtsp-url <url>`
-  - `--rtsp-url` without a value uses the current default stream URL
-  - `--rtsp-transport` supports `auto|tcp|udp`, default is `auto`
-  - Intended for real-time preview and YOLO detection
-  - Current default stream in this environment: `rtsp://192.168.3.3:8554/live`
-  - Current stage does not support `--save`
+## 运行方式
 
-## Real-Time RTSP Detection
-```bash
-python3 src/main.py --rtsp-url --mode detect
-python3 src/main.py --rtsp-url rtsp://172.29.160.1:8554/live --rtsp-transport udp --mode detect
-```
+当前代码仍处于从旧版视频处理 / YOLO 检测原型向新结构迁移的阶段。
 
-Behavior:
-- Opens the specified RTSP stream
-- In `auto` mode, tries `tcp` first and falls back to `udp`
-- Runs YOLOv8 inference on each frame
-- Displays annotated boxes and class labels
-- Shows FPS in the top-left corner
-- Exits cleanly on `ESC`
-- Retries live stream reconnect on transient frame-read failures
+这意味着当前仓库中仍保留一部分旧版原型能力，例如基础视频输入、帧处理和 YOLO 检测相关代码；而新的项目目标已经明确收敛为“学习 / 工作状态分析系统”。因此，现阶段更适合将本项目理解为：
 
-## Notes
-- `--input` supports absolute path, relative path, or filename under `input/`
-- `--rtsp-url` is intended for live network streams such as VLC-published webcam feeds
-- VLC-published RTSP streams may require `--rtsp-transport udp`
-- Default `--rtsp-transport auto` will try `tcp` first and then `udp`
-- `--output <path>` overrides the default output file (`output/processed_output.mp4`) for file mode
-- In `detect` mode, YOLO weights are loaded once and reused for all frames
-- RTSP open failures return a clear runtime error message
-- First YOLO run may download model weights
-- Live RTSP/camera output saving is intentionally disabled in this iteration to keep the live path simple and stable
+- 旧版原型能力仍可作为技术基线参考
+- 新版结构、状态分析链路和 Web 展示链路正在逐步建立
+- 当前 README 主要描述项目的新方向、V1 目标和后续演进路径，而不是完整的最终启动说明
 
-## Project Structure
-- `src/main.py`: CLI entrypoint and module wiring
-- `src/pipeline.py`: pipeline orchestration (`read -> process/detect -> display -> optional save`)
-- `src/video_reader.py`: file/live-stream input abstraction
-- `src/frame_processor.py`: traditional frame processing modes
-- `src/ai_detector.py`: YOLOv8 model loading and inference
-- `src/video_writer.py`: output writer abstraction
-- `src/config.py`: centralized defaults
-- `src/utils.py`: common helper utilities
+后续当 V1 的目录结构、分析流程和 Web 接口稳定后，README 将补充更明确的运行方式与示例。
 
-## Documentation
-- Design details: `docs/design.md`
-- AI assistant context: `docs/ai_context.md`
+## Roadmap
 
-## Future Improvements
-- WebRTC input adapters
-- Structured JSON detection output
-- Performance profiling and benchmarking
-- C++ inference backend integration
+### V1
+
+- 完成项目结构重构
+- 建立统一数据模型
+- 建立单人场景 ROI 机制
+- 完成基础场景特征提取
+- 建立 `unknown / present / away / studying` 状态机
+- 完成学习 / 工作时长与离岗时长统计
+- 建立基础 focus score
+- 接入 FastAPI
+- 完成 React Dashboard 基础展示
+
+### V1.5
+
+- 优化状态分析稳定性
+- 优化时间段合并与统计准确性
+- 增强离线视频分析结果展示
+- 改善可视化细节与结果解释性
+
+### V2
+
+- 引入姿态估计能力
+- 增强行为识别能力
+- 提升对低头、离座、持续活动等行为的判断质量
+- 优化专注度估计逻辑
+
+### V3
+
+- 探索 C++ 媒体处理模块
+- 探索 Python + C++ 混合架构
+- 提升媒体处理与推理链路性能
+- 为更稳定的实时分析能力做架构准备
+
+## 文档说明
+
+- `README.md`：面向使用者、GitHub 访客、面试官和项目关注者，用于了解项目定位、目标与当前进展
+- `docs/design.md`：面向开发者，用于说明系统设计、模块边界与架构决策
+- `docs/ai_context.md`：面向 AI 编码助手，用于提供项目上下文、协作约束与实现导向
+
+## 当前状态说明
+
+当前阶段最优先的工作包括：
+
+- 完成项目结构重构
+- 建立统一数据模型
+- 建立状态机与事件模型
+- 打通后端分析链路与 Web 展示链路
+
+项目目前仍处于 V1 基础版本设计与实现阶段。当前工作的重点不是扩展功能范围，而是先把“输入、分析、统计、展示”这条主链路做清楚、做稳定、做成一个真正聚焦的工程项目。
