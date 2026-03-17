@@ -298,6 +298,17 @@ V1 的专注度不是黑盒 AI 模型，而是基于规则的可解释估计。
 
 AI 助手在推进任务时，应优先帮助项目形成“统一结构化链路”，而不是先做展示层细节或次要功能。
 
+## 当前第一批待创建文件
+
+第一批建议优先创建的文件如下：
+
+- `src/core/models.py`
+- `src/core/enums.py`
+- `src/behavior/scene_features.py`
+- `src/behavior/state_tracker.py`
+
+这些文件构成 V1 的最小核心能力。`core` 层负责统一数据语言，`scene_features` 和 `state_tracker` 负责把检测结果转换成可用的行为状态基础。应优先实现这些模块，再继续扩展 `pipeline` 和 `web` 层。
+
 ## 13. 测试建议
 
 建议优先新增以下测试：
@@ -381,3 +392,17 @@ AI 助手在本项目中的工作必须始终围绕以下原则展开：
 4. 是否有助于 FastAPI / WebSocket / React 展示链路
 
 凡是不直接支撑这条主线的实现，都应谨慎推进。
+
+## 文档职责约束（重要）
+
+修改文档时必须保持三份文档的职责边界清晰：
+
+- `README.md`：面向用户和 GitHub 访客，用于项目介绍
+- `docs/design.md`：面向开发者，用于说明架构设计
+- `docs/ai_context.md`：面向 AI 编码助手，用于说明开发约束与优先级
+
+必须遵守以下规则：
+
+- 不要把 `README.md` 写成设计文档
+- 不要把 `docs/ai_context.md` 写成 README
+- 修改文档时必须保持职责边界清晰
