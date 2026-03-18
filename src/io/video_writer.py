@@ -23,3 +23,4 @@ class VideoWriter:
 
     def release(self) -> None:
         self._writer.release()
+

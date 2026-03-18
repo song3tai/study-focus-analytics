@@ -1,6 +1,6 @@
 # Tests
 
-This directory contains automated tests for pipeline behavior and mode correctness.
+This directory contains automated tests for the V1 analysis pipeline and its supporting modules.
 
 ## Tooling
 - `pytest`: test runner and assertions
@@ -12,21 +12,21 @@ This directory contains automated tests for pipeline behavior and mode correctne
   - Use small synthetic frames instead of real videos
   - Avoid real model inference in unit tests
 - Boundary-focused coverage:
-  - Traditional processing modes (`original`, `gray`, `edge`)
-  - Pipeline mode routing (`process` vs `detect`)
+  - Pipeline mode routing (`analyze` vs `detect`)
   - Required dependency checks (detect mode requires detector)
+  - State transitions, focus estimation, and summary aggregation
 - Deterministic AI detector tests:
   - Stub `ultralytics.YOLO` to verify single-load behavior
-  - Verify `detect()` returns annotated frame output
+  - Verify structured detection output is stable
 
 ## Current Test Files
-- `test_frame_processor.py`: validates core frame mode behavior
 - `test_pipeline_modes.py`: validates pipeline flow and resource release
 - `test_ai_detector.py`: validates detector lazy-loading and inference call path
+- `test_behavior_modules.py`: validates scene features, state tracking, focus, and summary logic
 
 ## Run
 ```bash
-cd /home/song3tai/phoenix/projects/ai_audio_video/video_frame_processor
+cd /home/song3tai/study-focus-analytics
 source .venv/bin/activate
-pytest -q
+python -m pytest -q
 ```

@@ -200,3 +200,4 @@ def create_frame_source(
     if input_path is None:
         raise ValueError("input_path is required when neither camera nor rtsp mode is enabled")
     return VideoReader(input_path=input_path, fallback_fps=fallback_fps)
+

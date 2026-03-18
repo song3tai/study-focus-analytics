@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import pytest
 
-from video_reader import CameraReader, RTSPReader, VideoReader, create_frame_source
+from src.io.video_reader import CameraReader, RTSPReader, VideoReader, create_frame_source
 
 
 class _FakeCapture:
@@ -36,7 +36,7 @@ class _FakeCapture:
 
 
 def test_create_frame_source_returns_video_reader(monkeypatch) -> None:
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", lambda _path: _FakeCapture(opened=True))
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _path: _FakeCapture(opened=True))
 
     source = create_frame_source(
         input_path=Path("input/sample.mp4"),
@@ -51,7 +51,7 @@ def test_create_frame_source_returns_video_reader(monkeypatch) -> None:
 
 
 def test_create_frame_source_returns_camera_reader(monkeypatch) -> None:
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", lambda _index: _FakeCapture(opened=True))
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _index: _FakeCapture(opened=True))
 
     source = create_frame_source(
         input_path=None,
@@ -68,7 +68,7 @@ def test_create_frame_source_returns_camera_reader(monkeypatch) -> None:
 
 
 def test_create_frame_source_returns_rtsp_reader(monkeypatch) -> None:
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", lambda _url: _FakeCapture(opened=True, fps=15.0))
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _url: _FakeCapture(opened=True, fps=15.0))
 
     source = create_frame_source(
         input_path=None,
@@ -88,7 +88,7 @@ def test_create_frame_source_returns_rtsp_reader(monkeypatch) -> None:
 
 def test_camera_reader_reports_clear_error(monkeypatch) -> None:
     fake_capture = _FakeCapture(opened=False)
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", lambda _index: fake_capture)
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _index: fake_capture)
 
     with pytest.raises(RuntimeError, match="failed to open camera: index=1. camera not available"):
         CameraReader(camera_index=1)
@@ -98,7 +98,7 @@ def test_camera_reader_reports_clear_error(monkeypatch) -> None:
 
 def test_rtsp_reader_reports_clear_error(monkeypatch) -> None:
     fake_capture = _FakeCapture(opened=False)
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", lambda _url: fake_capture)
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _url: fake_capture)
 
     with pytest.raises(
         RuntimeError,
@@ -117,7 +117,7 @@ def test_rtsp_reader_sets_ffmpeg_transport_option_temporarily(monkeypatch) -> No
         observed_option = __import__("os").environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
         return _FakeCapture(opened=True)
 
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", fake_capture_factory)
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", fake_capture_factory)
 
     RTSPReader(stream_url="rtsp://192.168.3.3:8554/live", transport="tcp")
 
@@ -135,7 +135,7 @@ def test_rtsp_reader_auto_falls_back_to_udp(monkeypatch) -> None:
             return _FakeCapture(opened=False)
         return _FakeCapture(opened=True, fps=20.0)
 
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", fake_capture_factory)
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", fake_capture_factory)
 
     reader = RTSPReader(stream_url="rtsp://192.168.3.3:8554/live", transport="auto")
 
@@ -150,7 +150,7 @@ def test_rtsp_reader_reconnect_reopens_stream(monkeypatch) -> None:
         calls["count"] += 1
         return _FakeCapture(opened=True)
 
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", fake_capture_factory)
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", fake_capture_factory)
 
     reader = RTSPReader(stream_url="rtsp://192.168.3.3:8554/live", transport="udp")
 
@@ -159,7 +159,7 @@ def test_rtsp_reader_reconnect_reopens_stream(monkeypatch) -> None:
 
 
 def test_video_reader_uses_fallback_fps(monkeypatch) -> None:
-    monkeypatch.setattr("video_reader.cv2.VideoCapture", lambda _path: _FakeCapture(opened=True, fps=0.0))
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _path: _FakeCapture(opened=True, fps=0.0))
 
     reader = VideoReader(Path("input/sample.mp4"), fallback_fps=29.97)
 

@@ -1,21 +1,24 @@
-"""CLI entrypoint for video_frame_processor."""
+"""CLI entrypoint for Study Focus Analytics."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
-from ai_detector import AIDetector
-from config import AppConfig
-from frame_processor import FrameProcessor, SUPPORTED_MODES
-from pipeline import VideoPipeline
-from utils import ensure_dir, project_root, resolve_input_path
-from video_reader import create_frame_source
-from video_writer import VideoWriter
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.config import AppConfig
+from src.inference.ai_detector import AIDetector
+from src.io.video_reader import create_frame_source
+from src.io.video_writer import VideoWriter
+from src.pipeline import AnalysisPipeline
+from src.utils import ensure_dir, project_root, resolve_input_path
 
 
 def parse_args(config: AppConfig) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Video frame processor")
+    parser = argparse.ArgumentParser(description="Study Focus Analytics")
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument(
         "--input",
@@ -42,8 +45,8 @@ def parse_args(config: AppConfig) -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         default=config.default_mode,
-        choices=SUPPORTED_MODES + ("detect",),
-        help="Frame processing mode",
+        choices=("detect", "analyze"),
+        help="Processing mode",
     )
     parser.add_argument(
         "--save",
@@ -58,13 +61,13 @@ def parse_args(config: AppConfig) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=config.yolo_model_name,
-        help="YOLO model name/path used in detect mode",
+        help="YOLO model name/path used in detect or analyze mode",
     )
     parser.add_argument(
         "--conf",
         type=float,
         default=config.yolo_conf_threshold,
-        help="YOLO confidence threshold for detect mode",
+        help="YOLO confidence threshold for detect or analyze mode",
     )
     parser.add_argument(
         "--rtsp-transport",
@@ -121,8 +124,6 @@ def main() -> int:
         print(f"[ERROR] {exc}")
         return 1
 
-    frame_processor = FrameProcessor()
-
     writer = None
     if args.save:
         output_path = build_output_path(root, config, args.output)
@@ -133,12 +134,11 @@ def main() -> int:
         print(f"[INFO] Saving processed video to: {output_path}")
 
     detector = None
-    if args.mode == "detect":
+    if args.mode in {"detect", "analyze"}:
         detector = AIDetector(model_name=args.model, conf_threshold=args.conf)
 
-    pipeline = VideoPipeline(
+    pipeline = AnalysisPipeline(
         reader=reader,
-        frame_processor=frame_processor,
         config=config,
         mode=args.mode,
         display_enabled=not args.no_display,

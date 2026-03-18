@@ -4,6 +4,6 @@ import sys
 from pathlib import Path
 
 
-SRC_PATH = Path(__file__).resolve().parent.parent / "src"
-if str(SRC_PATH) not in sys.path:
-    sys.path.insert(0, str(SRC_PATH))
+ROOT_PATH = Path(__file__).resolve().parent.parent
+if str(ROOT_PATH) not in sys.path:
+    sys.path.insert(0, str(ROOT_PATH))
