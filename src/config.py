@@ -41,9 +41,13 @@ class AppConfig:
 
     def build_roi(self, *, width: int, height: int) -> ROI:
         """Build the default study/work ROI from configured ratios."""
+        x1 = int(width * self.roi_left_ratio)
+        y1 = int(height * self.roi_top_ratio)
+        x2 = int(width * self.roi_right_ratio)
+        y2 = int(height * self.roi_bottom_ratio)
         return ROI(
-            x1=int(width * self.roi_left_ratio),
-            y1=int(height * self.roi_top_ratio),
-            x2=int(width * self.roi_right_ratio),
-            y2=int(height * self.roi_bottom_ratio),
+            x=x1,
+            y=y1,
+            w=max(0, x2 - x1),
+            h=max(0, y2 - y1),
         )

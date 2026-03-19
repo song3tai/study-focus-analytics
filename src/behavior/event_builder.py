@@ -16,26 +16,27 @@ class EventBuilder:
         if snapshot.previous_state is None:
             return None
 
-        event_type = EventType.STATE_CHANGED
-        message = f"state changed to {snapshot.state.value}"
+        event_type = EventType.SESSION_STARTED
+        message = f"state changed to {snapshot.current_state.value}"
 
-        if snapshot.state == BehaviorState.AWAY:
+        if snapshot.current_state == BehaviorState.AWAY:
             event_type = EventType.AWAY_STARTED
             message = "user left the study/work area"
         elif snapshot.previous_state == BehaviorState.AWAY:
             event_type = EventType.AWAY_ENDED
             message = "user returned to the study/work area"
-        elif snapshot.state == BehaviorState.STUDYING:
-            event_type = EventType.STUDYING_STARTED
-            message = "studying state confirmed"
-        elif snapshot.previous_state == BehaviorState.STUDYING:
-            event_type = EventType.STUDYING_ENDED
-            message = "studying state ended"
+        elif snapshot.previous_state == BehaviorState.UNKNOWN:
+            event_type = EventType.SESSION_STARTED
+            message = "analysis session entered a stable state"
+        elif snapshot.current_state == BehaviorState.UNKNOWN:
+            event_type = EventType.SESSION_ENDED
+            message = "analysis session returned to unknown state"
 
         return BehaviorEvent(
             event_type=event_type,
-            frame_index=snapshot.frame_index,
-            timestamp_seconds=snapshot.timestamp_seconds,
-            state=snapshot.state,
+            frame_id=snapshot.frame_id,
+            timestamp=snapshot.timestamp,
+            state_before=snapshot.previous_state,
+            state_after=snapshot.current_state,
             message=message,
         )

@@ -93,7 +93,7 @@ def test_focus_event_and_summary_modules_work_together() -> None:
             person_bbox=ROI(x1=30, y1=30, x2=70, y2=85),
         )
         latest_snapshot = tracker.update(features)
-        latest_focus = focus_estimator.estimate(latest_snapshot, features)
+        latest_focus = focus_estimator.estimate(features, latest_snapshot)
         latest_event = event_builder.build(latest_snapshot) or latest_event
         summary = aggregator.update(latest_snapshot, latest_focus, event_builder.build(latest_snapshot))
 

@@ -12,7 +12,7 @@ from src.core.models import AnalysisSummary, BehaviorEvent, BehaviorStateSnapsho
 class AnalyticsAggregator:
     """Maintain running summary statistics for one analysis session."""
 
-    _last_timestamp_seconds: float | None = None
+    _last_timestamp: float | None = None
     _summary: AnalysisSummary = AnalysisSummary()
     _focus_total: float = 0.0
     _focus_count: int = 0
@@ -24,33 +24,15 @@ class AnalyticsAggregator:
         event: BehaviorEvent | None,
     ) -> AnalysisSummary:
         delta = 0.0
-        if self._last_timestamp_seconds is not None:
-            delta = max(0.0, snapshot.timestamp_seconds - self._last_timestamp_seconds)
-        self._last_timestamp_seconds = snapshot.timestamp_seconds
+        if self._last_timestamp is not None:
+            delta = max(0.0, snapshot.timestamp - self._last_timestamp)
+        self._last_timestamp = snapshot.timestamp
 
         summary = self._summary
-        total_duration = summary.total_duration_seconds + delta
-        present_duration = summary.present_duration_seconds
-        away_duration = summary.away_duration_seconds
-        studying_duration = summary.studying_duration_seconds
-        unknown_duration = summary.unknown_duration_seconds
-
-        if snapshot.state == BehaviorState.PRESENT:
-            present_duration += delta
-        elif snapshot.state == BehaviorState.AWAY:
-            away_duration += delta
-        elif snapshot.state == BehaviorState.STUDYING:
-            present_duration += delta
-            studying_duration += delta
-        else:
-            unknown_duration += delta
-
+        total_duration = summary.total_duration_sec + delta
         away_count = summary.away_count
-        event_count = summary.event_count
-        if event is not None:
-            event_count += 1
-            if event.event_type == EventType.AWAY_STARTED:
-                away_count += 1
+        if event is not None and event.event_type == EventType.AWAY_STARTED:
+            away_count += 1
 
         self._focus_total += focus_estimate.focus_score
         self._focus_count += 1
@@ -59,16 +41,14 @@ class AnalyticsAggregator:
         min_focus = focus_estimate.focus_score if self._focus_count == 1 else min(summary.min_focus_score, focus_estimate.focus_score)
 
         self._summary = AnalysisSummary(
-            total_duration_seconds=round(total_duration, 3),
-            present_duration_seconds=round(present_duration, 3),
-            away_duration_seconds=round(away_duration, 3),
-            studying_duration_seconds=round(studying_duration, 3),
-            unknown_duration_seconds=round(unknown_duration, 3),
+            total_duration_sec=round(total_duration, 3),
+            total_present_duration_sec=round(snapshot.total_present_duration_sec, 3),
+            total_away_duration_sec=round(snapshot.total_away_duration_sec, 3),
+            total_studying_duration_sec=round(snapshot.total_studying_duration_sec, 3),
             away_count=away_count,
-            event_count=event_count,
             average_focus_score=round(average_focus, 2),
             max_focus_score=round(max_focus, 2),
             min_focus_score=round(min_focus, 2),
-            current_state=snapshot.state,
+            focus_samples=self._focus_count,
         )
         return self._summary

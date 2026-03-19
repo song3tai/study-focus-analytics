@@ -9,7 +9,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from src.core.models import Detection, DetectionResult, ROI
+from src.core.models import BBox, Detection, DetectionResult
 from src.utils import ensure_dir, project_root
 
 
@@ -56,19 +56,21 @@ class AIDetector:
 
         if not results:
             return DetectionResult(
-                frame_index=frame_index,
-                timestamp_seconds=timestamp_seconds,
+                frame_id=frame_index,
+                timestamp=timestamp_seconds,
                 detections=[],
                 inference_ms=inference_ms,
+                model_name=self.model_name,
             )
 
         raw_result = results[0]
         detections = self._to_detections(raw_result)
         return DetectionResult(
-            frame_index=frame_index,
-            timestamp_seconds=timestamp_seconds,
+            frame_id=frame_index,
+            timestamp=timestamp_seconds,
             detections=detections,
             inference_ms=inference_ms,
+            model_name=self.model_name,
         )
 
     def detect(self, frame: np.ndarray) -> np.ndarray:
@@ -114,9 +116,10 @@ class AIDetector:
             label = str(names.get(class_id, class_id))
             detections.append(
                 Detection(
-                    label=label,
+                    class_id=class_id,
+                    class_name=label,
                     confidence=confidence,
-                    bbox=ROI(
+                    bbox=BBox(
                         x1=int(coords[0]),
                         y1=int(coords[1]),
                         x2=int(coords[2]),

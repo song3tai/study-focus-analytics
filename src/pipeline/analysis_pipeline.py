@@ -37,20 +37,16 @@ class AnalysisPipeline:
     def __post_init__(self) -> None:
         self.fps_counter = FPSCounter()
         width, height = self.reader.frame_size()
-        roi = self.config.build_roi(width=width, height=height)
-        self.scene_feature_extractor = SceneFeatureExtractor(roi=roi)
-        self.state_tracker = StateTracker(
-            present_confirm_seconds=self.config.present_confirm_seconds,
-            away_confirm_seconds=self.config.away_confirm_seconds,
-            studying_confirm_seconds=self.config.studying_confirm_seconds,
-            studying_min_stability=self.config.studying_min_stability,
-        )
-        self.focus_estimator = FocusEstimator(max_window_size=self.config.focus_window_frames)
+        self.roi = self.config.build_roi(width=width, height=height)
+        self.scene_feature_extractor = SceneFeatureExtractor()
+        self.state_tracker = StateTracker()
+        self.focus_estimator = FocusEstimator()
         self.event_builder = EventBuilder()
         self.analytics_aggregator = AnalyticsAggregator()
         self.latest_result: ProcessResult | None = None
         self._latest_events: list[dict[str, str | float | int]] = []
         self._source_type = self._resolve_source_type()
+        self._previous_features = None
 
     def run(self) -> int:
         display_enabled = self.display_enabled
@@ -94,20 +90,28 @@ class AnalysisPipeline:
             raise RuntimeError("AIDetector is required when mode is 'analyze'.")
 
         frame_packet = FramePacket(
-            frame=frame,
-            frame_index=frame_index,
-            timestamp_seconds=timestamp_seconds,
+            frame_id=frame_index,
+            timestamp=timestamp_seconds,
             source_type=self._source_type,
-            source_label=getattr(self.reader, "source_label", self._source_type.value),
+            source_name=getattr(self.reader, "source_label", self._source_type.value),
+            is_live=self.reader.is_live,
+            frame=frame,
+            fps_hint=self.reader.fps(),
         )
         detection_result = self.detector.detect_frame(
             frame_packet.frame,
-            frame_index=frame_packet.frame_index,
-            timestamp_seconds=frame_packet.timestamp_seconds,
+            frame_index=frame_packet.frame_id,
+            timestamp_seconds=frame_packet.timestamp,
         )
-        frame_features = self.scene_feature_extractor.extract(frame_packet, detection_result)
+        frame_features = self.scene_feature_extractor.extract(
+            frame_packet=frame_packet,
+            detection_result=detection_result,
+            roi=self.roi,
+            prev_features=self._previous_features,
+        )
+        self._previous_features = frame_features
         state_snapshot = self.state_tracker.update(frame_features)
-        focus_estimate = self.focus_estimator.estimate(state_snapshot, frame_features)
+        focus_estimate = self.focus_estimator.estimate(frame_features, state_snapshot)
         event = self.event_builder.build(state_snapshot)
         summary = self.analytics_aggregator.update(state_snapshot, focus_estimate, event)
 
@@ -117,16 +121,16 @@ class AnalysisPipeline:
             frame_features=frame_features,
             state_snapshot=state_snapshot,
             focus_estimate=focus_estimate,
+            events=[event] if event is not None else [],
             summary=summary,
-            event=event,
         )
         self.latest_result = result
         if event is not None:
             self._latest_events.append(
                 {
                     "event_type": event.event_type.value,
-                    "timestamp_seconds": event.timestamp_seconds,
-                    "frame_index": event.frame_index,
+                    "timestamp": event.timestamp,
+                    "frame_id": event.frame_id,
                     "message": event.message,
                 }
             )
@@ -173,14 +177,14 @@ class AnalysisPipeline:
 
     def _render_analysis_overlay(self, result: ProcessResult) -> np.ndarray:
         frame = self.detector.annotate(result.frame_packet.frame, result.detection_result) if self.detector else result.frame_packet.frame.copy()
-        self._draw_roi(frame, result.frame_features.roi)
+        self._draw_roi(frame, self.roi)
 
         lines = [
-            f"State: {result.state_snapshot.state.value}",
+            f"State: {result.state_snapshot.current_state.value}",
             f"Focus: {result.focus_estimate.focus_score:.1f} ({result.focus_estimate.focus_level.value})",
-            f"Present: {result.summary.present_duration_seconds:.1f}s",
-            f"Away: {result.summary.away_duration_seconds:.1f}s",
-            f"Studying: {result.summary.studying_duration_seconds:.1f}s",
+            f"Present: {result.summary.total_present_duration_sec:.1f}s",
+            f"Away: {result.summary.total_away_duration_sec:.1f}s",
+            f"Studying: {result.summary.total_studying_duration_sec:.1f}s",
         ]
         for index, line in enumerate(lines):
             cv2.putText(
