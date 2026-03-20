@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import types
 
 import cv2
 import pytest
 
+import src.io.video_reader as video_reader_module
 from src.io.video_reader import CameraReader, RTSPReader, VideoReader, create_frame_source
 
 
@@ -51,6 +53,7 @@ def test_create_frame_source_returns_video_reader(monkeypatch) -> None:
 
 
 def test_create_frame_source_returns_camera_reader(monkeypatch) -> None:
+    monkeypatch.setattr(video_reader_module, "platform", types.SimpleNamespace(system=lambda: "Linux"))
     monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _index: _FakeCapture(opened=True))
 
     source = create_frame_source(
@@ -88,12 +91,35 @@ def test_create_frame_source_returns_rtsp_reader(monkeypatch) -> None:
 
 def test_camera_reader_reports_clear_error(monkeypatch) -> None:
     fake_capture = _FakeCapture(opened=False)
+    monkeypatch.setattr(video_reader_module, "platform", types.SimpleNamespace(system=lambda: "Linux"))
     monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", lambda _index: fake_capture)
 
-    with pytest.raises(RuntimeError, match="failed to open camera: index=1. camera not available"):
+    with pytest.raises(RuntimeError, match="failed to open camera: index=1. camera not available via backends \\[default\\]"):
         CameraReader(camera_index=1)
 
     assert fake_capture.released is True
+
+
+def test_camera_reader_windows_falls_back_between_backends(monkeypatch) -> None:
+    attempts: list[int | None] = []
+
+    monkeypatch.setattr(video_reader_module, "platform", types.SimpleNamespace(system=lambda: "Windows"))
+    monkeypatch.setattr(video_reader_module.cv2, "CAP_DSHOW", 700, raising=False)
+    monkeypatch.setattr(video_reader_module.cv2, "CAP_MSMF", 1400, raising=False)
+
+    def fake_capture_factory(index: int, backend: int | None = None) -> _FakeCapture:
+        assert index == 0
+        attempts.append(backend)
+        if backend == 700:
+            return _FakeCapture(opened=False)
+        return _FakeCapture(opened=True)
+
+    monkeypatch.setattr("src.io.video_reader.cv2.VideoCapture", fake_capture_factory)
+
+    reader = CameraReader(camera_index=0)
+
+    assert attempts == [700, 1400]
+    assert reader.backend_name == "msmf"
 
 
 def test_rtsp_reader_reports_clear_error(monkeypatch) -> None:

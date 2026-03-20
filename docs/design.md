@@ -168,6 +168,7 @@ V1 当前不以“视频上传到云端，再由云端 GPU 做实时推理”的
 - `src/ai_detector.py` 已收敛为 `src/inference/ai_detector.py`
 - 旧版 `frame_processor` 通用图像模式已从 V1 主链路移除
 - `src/pipeline.py` 已迁移为 `src/pipeline/analysis_pipeline.py`
+- `src/pipeline/pipeline.py` 仅保留兼容导入层，不再维护第二套 pipeline 逻辑
 - `src/main.py` -> 保持为入口，但只负责 wiring、启动和高层流程连接
 - `src/utils.py` -> 保留，作为通用工具模块
 - `src/config.py` -> 保留，后续可能增强配置能力
@@ -317,7 +318,7 @@ V1 当前不以“视频上传到云端，再由云端 GPU 做实时推理”的
 
 ### src/pipeline/
 
-`pipeline` 层负责把前述各模块连接成一条可运行的分析链路。推荐核心模块为 `analysis_pipeline`。
+`pipeline` 层负责把前述各模块连接成一条可运行的分析链路。当前唯一正式实现文件为 `analysis_pipeline.py`，包级正式导出入口为 `from src.pipeline import LocalAnalysisPipeline, PipelineConfig`。
 
 其职责包括：
 

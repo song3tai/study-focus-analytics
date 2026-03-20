@@ -1,6 +1,5 @@
-"""Pipeline exports."""
+"""Formal pipeline package exports."""
 
-from src.pipeline.analysis_pipeline import AnalysisPipeline, AnalysisPipeline as VideoPipeline
-from src.pipeline.pipeline import LocalAnalysisPipeline, PipelineConfig
+from src.pipeline.analysis_pipeline import LocalAnalysisPipeline, PipelineConfig
 
-__all__ = ["AnalysisPipeline", "VideoPipeline", "LocalAnalysisPipeline", "PipelineConfig"]
+__all__ = ["LocalAnalysisPipeline", "PipelineConfig"]

@@ -147,6 +147,12 @@ Study Focus Analytics/
 - `docs/`：设计文档与协作上下文文档
 - `tests/`：核心模块测试
 
+当前主干已经收口为单一正式 pipeline 实现：
+
+- 正式实现文件：`src/pipeline/analysis_pipeline.py`
+- 正式包级导出入口：`from src.pipeline import LocalAnalysisPipeline, PipelineConfig`
+- `src/pipeline/pipeline.py` 仅保留为兼容导入转发层，不再承载第二套逻辑
+
 React 前端属于 V1 目标的一部分，但当前仓库中尚未创建独立 `frontend/` 目录。
 
 ## Demo（示例展示）
@@ -183,8 +189,21 @@ python -m pip install -r requirements.txt
 ### 3. 运行测试
 
 ```bash
-python -m pytest -q
+python3 -m pytest -q
 ```
+
+测试依赖当前包含在 `requirements.txt` 中，至少需要保证以下模块可导入：
+
+- `pytest`
+- `opencv-python`（提供 `cv2`）
+
+当前仓库已经在本地完成过一次实际验证：
+
+```bash
+python3 -m pytest -q
+```
+
+结果为 `19 passed`。
 
 ### 4. 启动离线视频分析
 
@@ -198,6 +217,12 @@ python src/main.py --input sample.mp4
 
 ```bash
 python src/main.py --input sample.mp4 --no-display
+```
+
+如果你在代码中直接复用逐帧分析主链路，优先使用：
+
+```python
+from src.pipeline import LocalAnalysisPipeline, PipelineConfig
 ```
 
 ### 5. 启动检测预览模式
@@ -231,15 +256,100 @@ python src/main.py --input sample.mp4 --save --output output/analysis.mp4
 当前仓库已经提供了 V1 的 FastAPI 接口骨架，可用于对接前端或联调接口。
 
 ```bash
-python -m uvicorn web.api:create_app --factory --reload --app-dir src
+python -m uvicorn web.api:app --host 127.0.0.1 --port 8000 --reload --app-dir src
 ```
+
+## Windows 真实联调
+
+当前推荐把真实运行链路整体放到 Windows 本机执行，而不是拆成 Windows + WSL 跨环境联调。
+
+### 1. 准备 Windows Python 环境
+
+在 PowerShell 中：
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+如果 `pytest`、`cv2` 或 `fastapi` 导入失败，优先重新执行一次 `python -m pip install -r requirements.txt`。
+
+### 2. 启动 Web 服务
+
+在项目根目录执行：
+
+```powershell
+python -m uvicorn web.api:app --host 127.0.0.1 --port 8000 --reload --app-dir src
+```
+
+浏览器或前端可直接访问：
+
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/analysis/status`
+- `http://127.0.0.1:8000/analysis/latest`
+- `ws://127.0.0.1:8000/ws/analysis`
+
+### 3. 先验证本地视频文件
+
+推荐先用仓库自带视频验证完整链路：
+
+```powershell
+curl -Method POST http://127.0.0.1:8000/analysis/start `
+  -ContentType "application/json" `
+  -Body '{"source_type":"video_file","source":"input/sample.mp4","debug":false}'
+```
+
+验证中可轮询：
+
+```powershell
+curl http://127.0.0.1:8000/analysis/status
+curl http://127.0.0.1:8000/analysis/latest
+curl http://127.0.0.1:8000/analysis/summary
+```
+
+停止分析：
+
+```powershell
+curl -Method POST http://127.0.0.1:8000/analysis/stop
+```
+
+### 4. 再验证 USB 摄像头
+
+Windows 下推荐先从 `source=0` 开始尝试：
+
+```powershell
+curl -Method POST http://127.0.0.1:8000/analysis/start `
+  -ContentType "application/json" `
+  -Body '{"source_type":"camera","source":"0","debug":false}'
+```
+
+如果 `0` 打不开，再试 `1`、`2`。当前代码会优先尝试 Windows 常见的 OpenCV 摄像头 backend，再回退到默认 backend。
+
+### 5. 常见问题
+
+- 摄像头打不开：
+  - 先确认 Windows 自带“相机”应用能否正常读取设备
+  - 关闭可能占用摄像头的应用，例如微信、腾讯会议、OBS、浏览器
+  - 尝试把 `source` 从 `0` 改为 `1`
+
+- 视频文件打不开：
+  - 优先使用相对项目根目录的路径，例如 `input/sample.mp4`
+  - 也可以直接传 Windows 绝对路径，例如 `C:\\Users\\you\\Videos\\sample.mp4`
+
+- 浏览器连不上：
+  - 先确认 `uvicorn` 已启动在 `127.0.0.1:8000`
+  - 先访问 `/health`，再访问 `/analysis/status`
 
 启动后可访问：
 
 - `GET /health`
-- `GET /api/current`
-- `GET /api/summary`
-- `GET /api/events`
+- `GET /analysis/status`
+- `GET /analysis/latest`
+- `GET /analysis/summary`
+- `POST /analysis/start`
+- `POST /analysis/stop`
 - `WS /ws/analysis`
 
 ### 常用命令汇总
@@ -250,7 +360,7 @@ python -m pytest -q
 python src/main.py --input sample.mp4
 python src/main.py --input sample.mp4 --mode detect
 python src/main.py --camera
-python -m uvicorn web.api:create_app --factory --reload --app-dir src
+python -m uvicorn web.api:app --host 127.0.0.1 --port 8000 --reload --app-dir src
 ```
 
 ## Roadmap

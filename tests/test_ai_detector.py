@@ -44,9 +44,9 @@ def test_detector_loads_model_once_and_returns_structured_detection(monkeypatch)
     out2 = detector.detect_frame(frame, frame_index=4, timestamp_seconds=1.5)
 
     assert _FakeYOLO.init_count == 1
-    assert out1.frame_index == 3
-    assert out1.timestamp_seconds == 1.25
+    assert out1.frame_id == 3
+    assert out1.timestamp == 1.25
     assert len(out1.detections) == 1
-    assert out1.detections[0].label == "person"
+    assert out1.detections[0].class_name == "person"
     assert out1.detections[0].bbox.x1 == 1
     assert len(out2.detections) == 1

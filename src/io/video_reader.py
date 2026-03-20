@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import os
 from pathlib import Path
+import platform
 
 import cv2
 import numpy as np
@@ -95,22 +96,56 @@ class CameraReader(OpenCVFrameSource):
 
     def __init__(self, camera_index: int = 0, fallback_fps: float = 30.0) -> None:
         self.camera_index = camera_index
-        capture = cv2.VideoCapture(camera_index)
+        self.backend_name = "default"
+        capture, backend_name = self._open_with_fallback(camera_index=camera_index)
+        self.backend_name = backend_name
         try:
             super().__init__(
                 capture=capture,
-                source_label=f"camera:{camera_index}",
+                source_label=f"camera:{camera_index} ({backend_name})",
                 fallback_fps=fallback_fps,
             )
         except RuntimeError as exc:
             capture.release()
             raise RuntimeError(
-                f"failed to open camera: index={camera_index}. camera not available"
+                f"failed to open camera: index={camera_index}. "
+                f"camera not available via backends [{', '.join(self._camera_backend_names())}]"
             ) from exc
 
     @property
     def is_live(self) -> bool:
         return True
+
+    @classmethod
+    def _open_with_fallback(cls, camera_index: int) -> tuple[cv2.VideoCapture, str]:
+        for backend_name, backend_value in cls._camera_backends():
+            capture = cls._open_capture(camera_index=camera_index, backend_value=backend_value)
+            if capture.isOpened():
+                return capture, backend_name
+            capture.release()
+        return cls._open_capture(camera_index=camera_index, backend_value=None), "default"
+
+    @staticmethod
+    def _open_capture(camera_index: int, backend_value: int | None) -> cv2.VideoCapture:
+        if backend_value is None:
+            return cv2.VideoCapture(camera_index)
+        return cv2.VideoCapture(camera_index, backend_value)
+
+    @classmethod
+    def _camera_backends(cls) -> tuple[tuple[str, int | None], ...]:
+        if platform.system() == "Windows":
+            candidates: list[tuple[str, int | None]] = []
+            if hasattr(cv2, "CAP_DSHOW"):
+                candidates.append(("dshow", cv2.CAP_DSHOW))
+            if hasattr(cv2, "CAP_MSMF"):
+                candidates.append(("msmf", cv2.CAP_MSMF))
+            candidates.append(("default", None))
+            return tuple(candidates)
+        return (("default", None),)
+
+    @classmethod
+    def _camera_backend_names(cls) -> tuple[str, ...]:
+        return tuple(name for name, _value in cls._camera_backends())
 
 
 class RTSPReader(OpenCVFrameSource):
@@ -200,4 +235,3 @@ def create_frame_source(
     if input_path is None:
         raise ValueError("input_path is required when neither camera nor rtsp mode is enabled")
     return VideoReader(input_path=input_path, fallback_fps=fallback_fps)
-

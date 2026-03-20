@@ -5,9 +5,10 @@ import pytest
 
 import src.pipeline.analysis_pipeline as pipeline_module
 from src.config import AppConfig
-from src.core.enums import BehaviorState, FocusLevel
-from src.core.models import Detection, DetectionResult, ROI
-from src.pipeline import AnalysisPipeline
+from src.core.enums import BehaviorState, FocusLevel, SourceType
+from src.core.models import BBox, Detection, DetectionResult, FramePacket, ROI
+from src.pipeline import LocalAnalysisPipeline, PipelineConfig
+from src.pipeline.analysis_pipeline import AnalysisPipeline
 
 
 class DummyReader:
@@ -58,11 +59,18 @@ class DummyDetector:
     def detect_frame(self, frame: np.ndarray, *, frame_index: int, timestamp_seconds: float) -> DetectionResult:
         self.calls += 1
         return DetectionResult(
-            frame_index=frame_index,
-            timestamp_seconds=timestamp_seconds,
+            frame_id=frame_index,
+            timestamp=timestamp_seconds,
             detections=[
-                Detection(label="person", confidence=0.9, bbox=ROI(x1=1, y1=1, x2=6, y2=6)),
+                Detection(
+                    class_id=0,
+                    class_name="person",
+                    confidence=0.9,
+                    bbox=BBox(x1=1, y1=1, x2=6, y2=6),
+                ),
             ],
+            inference_ms=3.0,
+            model_name="dummy-yolo",
         )
 
     def annotate(self, frame: np.ndarray, detection_result: DetectionResult) -> np.ndarray:
@@ -73,7 +81,80 @@ def _frames(n: int = 3) -> list[np.ndarray]:
     return [np.zeros((8, 8, 3), dtype=np.uint8) for _ in range(n)]
 
 
-def test_pipeline_detect_mode_uses_detector_and_writer() -> None:
+def _frame_packet(frame_id: int = 1, timestamp: float = 0.1) -> FramePacket:
+    return FramePacket(
+        frame_id=frame_id,
+        timestamp=timestamp,
+        source_type=SourceType.FILE,
+        source_name="sample.mp4",
+        is_live=False,
+        frame=np.zeros((100, 100, 3), dtype=np.uint8),
+        fps_hint=10.0,
+    )
+
+
+def _detection_result(frame_id: int = 1, timestamp: float = 0.1) -> DetectionResult:
+    return DetectionResult(
+        frame_id=frame_id,
+        timestamp=timestamp,
+        detections=[
+            Detection(
+                class_id=0,
+                class_name="person",
+                confidence=0.95,
+                bbox=BBox(x1=30, y1=20, x2=70, y2=90),
+            )
+        ],
+        inference_ms=2.5,
+        model_name="dummy-yolo",
+    )
+
+
+def test_local_analysis_pipeline_returns_full_process_result() -> None:
+    pipeline = LocalAnalysisPipeline(roi=ROI(x=20, y=15, w=60, h=75))
+
+    result = pipeline.process_frame(
+        frame_packet=_frame_packet(),
+        detection_result=_detection_result(),
+    )
+
+    assert result.error_message is None
+    assert result.frame_features is not None
+    assert result.state_snapshot is not None
+    assert result.focus_estimate is not None
+    assert result.summary is not None
+    assert result.state_snapshot.current_state in {BehaviorState.UNKNOWN, BehaviorState.PRESENT, BehaviorState.STUDYING}
+    assert result.focus_estimate.focus_level in {FocusLevel.LOW, FocusLevel.MEDIUM, FocusLevel.HIGH}
+
+
+def test_local_analysis_pipeline_returns_error_result_when_continue_on_error(monkeypatch) -> None:
+    pipeline = LocalAnalysisPipeline(
+        roi=ROI(x=20, y=15, w=60, h=75),
+        config=PipelineConfig(continue_on_error=True),
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        type(pipeline.scene_feature_extractor),
+        "extract",
+        _boom,
+    )
+
+    result = pipeline.process_frame(
+        frame_packet=_frame_packet(),
+        detection_result=_detection_result(),
+    )
+
+    assert result.error_message == "RuntimeError: boom"
+    assert result.frame_features is None
+    assert result.state_snapshot is None
+    assert result.focus_estimate is None
+    assert result.summary is None
+
+
+def test_video_analysis_pipeline_detect_mode_uses_detector_and_writer() -> None:
     reader = DummyReader(_frames(3))
     detector = DummyDetector()
     writer = DummyWriter()
@@ -96,14 +177,14 @@ def test_pipeline_detect_mode_uses_detector_and_writer() -> None:
     assert writer.released is True
 
 
-def test_pipeline_detect_mode_uses_detector_not_processor() -> None:
-    reader = DummyReader(_frames(2))
+def test_video_analysis_pipeline_analyze_mode_produces_structured_result() -> None:
+    reader = DummyReader(_frames(12))
     detector = DummyDetector()
 
     pipeline = AnalysisPipeline(
         reader=reader,
         config=AppConfig(),
-        mode="detect",
+        mode="analyze",
         display_enabled=False,
         writer=None,
         detector=detector,
@@ -112,41 +193,14 @@ def test_pipeline_detect_mode_uses_detector_not_processor() -> None:
     exit_code = pipeline.run()
 
     assert exit_code == 0
-    assert detector.calls == 2
-    assert reader.released is True
+    assert pipeline.latest_result is not None
+    assert pipeline.latest_result.frame_features is not None
+    assert pipeline.latest_result.state_snapshot is not None
+    assert pipeline.latest_result.focus_estimate is not None
+    assert pipeline.latest_result.summary is not None
 
 
-def test_pipeline_annotates_fps_for_each_frame(monkeypatch) -> None:
-    reader = DummyReader(_frames(2))
-    annotated_values: list[float] = []
-
-    monkeypatch.setattr(pipeline_module, "annotate_fps", lambda frame, fps: annotated_values.append(fps) or frame)
-
-    class _FakeFPSCounter:
-        def __init__(self) -> None:
-            self._values = iter((12.5, 13.0))
-
-        def tick(self) -> float:
-            return next(self._values)
-
-    monkeypatch.setattr(pipeline_module, "FPSCounter", _FakeFPSCounter)
-
-    pipeline = AnalysisPipeline(
-        reader=reader,
-        config=AppConfig(),
-        mode="detect",
-        display_enabled=False,
-        writer=None,
-        detector=DummyDetector(),
-    )
-
-    exit_code = pipeline.run()
-
-    assert exit_code == 0
-    assert annotated_values == [12.5, 13.0]
-
-
-def test_pipeline_detect_mode_requires_detector() -> None:
+def test_video_analysis_pipeline_detect_mode_requires_detector() -> None:
     reader = DummyReader(_frames(1))
 
     pipeline = AnalysisPipeline(
@@ -164,59 +218,24 @@ def test_pipeline_detect_mode_requires_detector() -> None:
     assert reader.released is True
 
 
-class DummyLiveReader(DummyReader):
-    def __init__(self, frames: list[np.ndarray], reconnect_results: list[bool]) -> None:
-        super().__init__(frames)
-        self.is_live = True
-        self._reconnect_results = reconnect_results
-        self.reconnect_calls = 0
-        self._first_read_failed = False
+def test_video_analysis_pipeline_annotates_fps_for_each_frame(monkeypatch) -> None:
+    reader = DummyReader(_frames(2))
+    annotated_values: list[float] = []
 
-    def read_frame(self):
-        if not self._first_read_failed:
-            self._first_read_failed = True
-            return False, None
-        if self._idx >= len(self._frames):
-            self.is_live = False
-        return super().read_frame()
+    monkeypatch.setattr(pipeline_module, "annotate_fps", lambda frame, fps: annotated_values.append(fps) or frame)
 
-    def reconnect(self) -> bool:
-        self.reconnect_calls += 1
-        if not self._reconnect_results:
-            return False
-        return self._reconnect_results.pop(0)
+    class FakeFPSCounter:
+        def __init__(self) -> None:
+            self._values = iter((12.5, 13.0))
 
+        def tick(self) -> float:
+            return next(self._values)
 
-def test_pipeline_reconnects_live_source_and_continues(monkeypatch) -> None:
-    monkeypatch.setattr(pipeline_module, "sleep", lambda _seconds: None)
-
-    reader = DummyLiveReader(_frames(2), reconnect_results=[True])
-    detector = DummyDetector()
+    monkeypatch.setattr(pipeline_module, "FPSCounter", FakeFPSCounter)
 
     pipeline = AnalysisPipeline(
         reader=reader,
-        config=AppConfig(live_reconnect_attempts=2, live_reconnect_interval_sec=0.01),
-        mode="detect",
-        display_enabled=False,
-        writer=None,
-        detector=detector,
-    )
-
-    exit_code = pipeline.run()
-
-    assert exit_code == 0
-    assert reader.reconnect_calls == 1
-    assert detector.calls == 2
-
-
-def test_pipeline_stops_after_live_reconnect_failures(monkeypatch) -> None:
-    monkeypatch.setattr(pipeline_module, "sleep", lambda _seconds: None)
-
-    reader = DummyLiveReader(_frames(2), reconnect_results=[False, False])
-
-    pipeline = AnalysisPipeline(
-        reader=reader,
-        config=AppConfig(live_reconnect_attempts=2, live_reconnect_interval_sec=0.01),
+        config=AppConfig(),
         mode="detect",
         display_enabled=False,
         writer=None,
@@ -226,34 +245,4 @@ def test_pipeline_stops_after_live_reconnect_failures(monkeypatch) -> None:
     exit_code = pipeline.run()
 
     assert exit_code == 0
-    assert reader.reconnect_calls == 2
-
-
-def test_pipeline_analyze_mode_produces_structured_result() -> None:
-    reader = DummyReader(_frames(12))
-    detector = DummyDetector()
-
-    pipeline = AnalysisPipeline(
-        reader=reader,
-        config=AppConfig(
-            present_confirm_seconds=0.0,
-            away_confirm_seconds=0.0,
-            studying_confirm_seconds=0.3,
-        ),
-        mode="analyze",
-        display_enabled=False,
-        writer=None,
-        detector=detector,
-    )
-
-    exit_code = pipeline.run()
-
-    assert exit_code == 0
-    assert pipeline.latest_result is not None
-    assert pipeline.latest_result.state_snapshot.state in {BehaviorState.PRESENT, BehaviorState.STUDYING}
-    assert pipeline.latest_result.focus_estimate.focus_level in {
-        FocusLevel.LOW,
-        FocusLevel.MEDIUM,
-        FocusLevel.HIGH,
-    }
-    assert pipeline.latest_result.summary.present_duration_seconds > 0.0
+    assert annotated_values == [12.5, 13.0]

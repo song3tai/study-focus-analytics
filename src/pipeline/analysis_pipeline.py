@@ -1,9 +1,9 @@
-"""Structured analysis pipeline for Study Focus Analytics."""
+"""Formal pipeline implementations for Study Focus Analytics."""
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import sleep
 
 import cv2
@@ -13,14 +13,132 @@ from src.behavior.analytics_aggregator import AnalyticsAggregator
 from src.behavior.event_builder import EventBuilder
 from src.behavior.focus_estimator import FocusEstimator
 from src.behavior.scene_features import SceneFeatureExtractor
-from src.behavior.state_tracker import StateTracker
+from src.behavior.state_tracker import BehaviorStateTracker
 from src.config import AppConfig
 from src.core.enums import SourceType
-from src.core.models import FramePacket, ProcessResult, ROI
+from src.core.models import (
+    DetectionResult,
+    FrameFeatures,
+    FramePacket,
+    ProcessResult,
+    ROI,
+)
 from src.inference.ai_detector import AIDetector
 from src.io.video_reader import FrameSource
 from src.io.video_writer import VideoWriter
 from src.utils import FPSCounter, annotate_fps
+
+
+@dataclass(slots=True)
+class PipelineConfig:
+    """Small controls for direct frame-by-frame analysis."""
+
+    enable_debug_logging: bool = False
+    continue_on_error: bool = True
+    keep_latest_result: bool = True
+
+
+@dataclass(slots=True)
+class LocalAnalysisPipeline:
+    """Formal frame-by-frame analysis pipeline built on the V1 data flow."""
+
+    roi: ROI
+    config: PipelineConfig = field(default_factory=PipelineConfig)
+    scene_feature_extractor: SceneFeatureExtractor = field(default_factory=SceneFeatureExtractor)
+    state_tracker: BehaviorStateTracker = field(default_factory=BehaviorStateTracker)
+    focus_estimator: FocusEstimator = field(default_factory=FocusEstimator)
+    event_builder: EventBuilder = field(default_factory=EventBuilder)
+    analytics_aggregator: AnalyticsAggregator = field(default_factory=AnalyticsAggregator)
+    _latest_result: ProcessResult | None = field(default=None, init=False, repr=False)
+    _previous_features: FrameFeatures | None = field(default=None, init=False, repr=False)
+
+    def process_frame(
+        self,
+        frame_packet: FramePacket,
+        detection_result: DetectionResult,
+    ) -> ProcessResult:
+        """Process one detector result through the structured analysis chain."""
+        try:
+            frame_features = self.scene_feature_extractor.extract(
+                frame_packet=frame_packet,
+                detection_result=detection_result,
+                roi=self.roi,
+                prev_features=self._previous_features,
+            )
+            self._previous_features = frame_features
+            state_snapshot = self.state_tracker.update(frame_features)
+            focus_estimate = self.focus_estimator.estimate(frame_features, state_snapshot)
+            event = self.event_builder.build(state_snapshot)
+            summary = self.analytics_aggregator.update(state_snapshot, focus_estimate, event)
+            result = ProcessResult(
+                frame_packet=frame_packet,
+                detection_result=detection_result,
+                frame_features=frame_features,
+                state_snapshot=state_snapshot,
+                focus_estimate=focus_estimate,
+                events=[event] if event is not None else [],
+                summary=summary,
+            )
+        except Exception as exc:
+            if not self.config.continue_on_error:
+                raise
+            result = ProcessResult(
+                frame_packet=frame_packet,
+                detection_result=detection_result,
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
+
+        if self.config.keep_latest_result:
+            self._latest_result = result
+
+        self._log_debug(result)
+        return result
+
+    def reset(self) -> None:
+        """Reset runtime state for a new local analysis session."""
+        self.state_tracker.reset()
+        self.focus_estimator.reset()
+        self.analytics_aggregator = AnalyticsAggregator()
+        self._latest_result = None
+        self._previous_features = None
+
+    def get_latest_result(self) -> ProcessResult | None:
+        return self._latest_result
+
+    def _log_debug(self, result: ProcessResult) -> None:
+        if not self.config.enable_debug_logging:
+            return
+
+        if result.error_message is not None:
+            print(
+                "[local_pipeline] "
+                f"frame={result.frame_id} ts={result.timestamp:.3f} "
+                f"error={result.error_message}"
+            )
+            return
+
+        snapshot = result.state_snapshot
+        focus_estimate = result.focus_estimate
+        if snapshot is None or focus_estimate is None:
+            print(
+                "[local_pipeline] "
+                f"frame={result.frame_id} ts={result.timestamp:.3f} "
+                "incomplete_result"
+            )
+            return
+
+        print(
+            "[local_pipeline] "
+            f"frame={result.frame_id} "
+            f"ts={result.timestamp:.3f} "
+            f"candidate={snapshot.candidate_state.value if snapshot.candidate_state else 'none'} "
+            f"state={snapshot.current_state.value} "
+            f"focus={focus_estimate.focus_score:.3f} "
+            f"focus_level={focus_estimate.focus_level.value} "
+            f"candidate_dur={snapshot.candidate_duration_sec:.2f}s "
+            f"state_dur={snapshot.state_duration_sec:.2f}s "
+            f"away_count={snapshot.away_count}"
+        )
 
 
 @dataclass
@@ -38,15 +156,10 @@ class AnalysisPipeline:
         self.fps_counter = FPSCounter()
         width, height = self.reader.frame_size()
         self.roi = self.config.build_roi(width=width, height=height)
-        self.scene_feature_extractor = SceneFeatureExtractor()
-        self.state_tracker = StateTracker()
-        self.focus_estimator = FocusEstimator()
-        self.event_builder = EventBuilder()
-        self.analytics_aggregator = AnalyticsAggregator()
+        self.local_pipeline = LocalAnalysisPipeline(roi=self.roi)
         self.latest_result: ProcessResult | None = None
         self._latest_events: list[dict[str, str | float | int]] = []
         self._source_type = self._resolve_source_type()
-        self._previous_features = None
 
     def run(self) -> int:
         display_enabled = self.display_enabled
@@ -103,28 +216,12 @@ class AnalysisPipeline:
             frame_index=frame_packet.frame_id,
             timestamp_seconds=frame_packet.timestamp,
         )
-        frame_features = self.scene_feature_extractor.extract(
+        result = self.local_pipeline.process_frame(
             frame_packet=frame_packet,
             detection_result=detection_result,
-            roi=self.roi,
-            prev_features=self._previous_features,
-        )
-        self._previous_features = frame_features
-        state_snapshot = self.state_tracker.update(frame_features)
-        focus_estimate = self.focus_estimator.estimate(frame_features, state_snapshot)
-        event = self.event_builder.build(state_snapshot)
-        summary = self.analytics_aggregator.update(state_snapshot, focus_estimate, event)
-
-        result = ProcessResult(
-            frame_packet=frame_packet,
-            detection_result=detection_result,
-            frame_features=frame_features,
-            state_snapshot=state_snapshot,
-            focus_estimate=focus_estimate,
-            events=[event] if event is not None else [],
-            summary=summary,
         )
         self.latest_result = result
+        event = result.event
         if event is not None:
             self._latest_events.append(
                 {
@@ -178,6 +275,24 @@ class AnalysisPipeline:
     def _render_analysis_overlay(self, result: ProcessResult) -> np.ndarray:
         frame = self.detector.annotate(result.frame_packet.frame, result.detection_result) if self.detector else result.frame_packet.frame.copy()
         self._draw_roi(frame, self.roi)
+
+        if (
+            result.error_message is not None
+            or result.state_snapshot is None
+            or result.focus_estimate is None
+            or result.summary is None
+        ):
+            cv2.putText(
+                frame,
+                result.error_message or "analysis result unavailable",
+                (12, 58),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+                cv2.LINE_AA,
+            )
+            return frame
 
         lines = [
             f"State: {result.state_snapshot.current_state.value}",

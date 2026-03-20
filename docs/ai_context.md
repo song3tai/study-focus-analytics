@@ -147,6 +147,12 @@ src/
 
 如果当前仓库中的实际文件结构尚未完全迁移到这个形态，AI 助手应优先朝这个结构演进，而不是继续加深旧结构耦合。
 
+当前 pipeline 主干收口约束如下：
+
+- 唯一正式 pipeline 实现文件：`src/pipeline/analysis_pipeline.py`
+- 正式包级导出入口：`from src.pipeline import LocalAnalysisPipeline, PipelineConfig`
+- `src/pipeline/pipeline.py` 只允许作为兼容导入转发层存在，不应继续承载第二套实现
+
 ## 6. 关键模块职责
 
 ### core
@@ -175,7 +181,7 @@ src/
 
 ### pipeline
 
-`pipeline` 负责逐帧编排，把输入、检测、行为分析、结果聚合连接成一条稳定管线。它是流程编排层，不是业务规则定义层。
+`pipeline` 负责逐帧编排，把输入、检测、行为分析、结果聚合连接成一条稳定管线。它是流程编排层，不是业务规则定义层。开发时默认将 `analysis_pipeline.py` 视为唯一正式实现来源，避免重新引入并行 pipeline。
 
 ### web
 

@@ -13,7 +13,7 @@ from src.config import AppConfig
 from src.inference.ai_detector import AIDetector
 from src.io.video_reader import create_frame_source
 from src.io.video_writer import VideoWriter
-from src.pipeline import AnalysisPipeline
+from src.pipeline.analysis_pipeline import AnalysisPipeline
 from src.utils import ensure_dir, project_root, resolve_input_path
 
 

@@ -5,6 +5,7 @@ This directory contains automated tests for the V1 analysis pipeline and its sup
 ## Tooling
 - `pytest`: test runner and assertions
 - `numpy`: deterministic test frame generation
+- `opencv-python`: provides `cv2` for IO / pipeline module imports
 - Built-in mocking through `pytest`'s `monkeypatch` fixture and simple dummy classes
 
 ## Test Strategy
@@ -28,5 +29,7 @@ This directory contains automated tests for the V1 analysis pipeline and its sup
 ```bash
 cd /home/song3tai/study-focus-analytics
 source .venv/bin/activate
-python -m pytest -q
+python3 -m pytest -q
 ```
+
+If test collection fails with `ModuleNotFoundError: No module named 'cv2'`, install dependencies from `requirements.txt` first.
