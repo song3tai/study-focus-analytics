@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.web.schemas import (
     AnalysisStatusResponse,
@@ -21,6 +23,7 @@ from src.web.websocket_manager import WebSocketManager
 
 APP_NAME = "Study Focus Analytics API"
 API_VERSION = "1.0.0"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def create_app(service: AnalysisWebService | None = None) -> FastAPI:
@@ -28,6 +31,7 @@ def create_app(service: AnalysisWebService | None = None) -> FastAPI:
     websocket_manager = WebSocketManager()
     analysis_service = service or AnalysisWebService(websocket_manager=websocket_manager)
     app = FastAPI(title=APP_NAME, version=API_VERSION)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.on_event("startup")
     async def on_startup() -> None:
@@ -44,6 +48,10 @@ def create_app(service: AnalysisWebService | None = None) -> FastAPI:
             app_name=APP_NAME,
             api_version=API_VERSION,
         )
+
+    @app.get("/", include_in_schema=False)
+    async def dashboard() -> FileResponse:
+        return FileResponse(STATIC_DIR / "dashboard.html")
 
     @app.get("/analysis/status", response_model=AnalysisStatusResponse)
     async def get_status() -> AnalysisStatusResponse:
@@ -104,6 +112,13 @@ def create_app(service: AnalysisWebService | None = None) -> FastAPI:
             has_summary=True,
             data=latest_summary,
             message="latest summary available",
+        )
+
+    @app.get("/analysis/video", include_in_schema=False)
+    async def get_video() -> StreamingResponse:
+        return StreamingResponse(
+            analysis_service.preview_stream(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
     @app.websocket("/ws/analysis")

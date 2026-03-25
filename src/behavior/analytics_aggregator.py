@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.core.enums import BehaviorState, EventType
 from src.core.models import AnalysisSummary, BehaviorEvent, BehaviorStateSnapshot, FocusEstimate
@@ -13,7 +13,7 @@ class AnalyticsAggregator:
     """Maintain running summary statistics for one analysis session."""
 
     _last_timestamp: float | None = None
-    _summary: AnalysisSummary = AnalysisSummary()
+    _summary: AnalysisSummary = field(default_factory=AnalysisSummary)
     _focus_total: float = 0.0
     _focus_count: int = 0
 

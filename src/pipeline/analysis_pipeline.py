@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from time import sleep
+from time import perf_counter, sleep
 
 import cv2
 import numpy as np
@@ -170,6 +170,7 @@ class AnalysisPipeline:
         try:
             frame_index = 0
             source_fps = self.reader.fps()
+            started_monotonic = perf_counter()
             while True:
                 ok, frame = self.reader.read_frame()
                 if not ok:
@@ -177,7 +178,12 @@ class AnalysisPipeline:
                         continue
                     break
 
-                timestamp_seconds = frame_index / max(source_fps, 1e-6)
+                timestamp_seconds = calculate_timestamp_seconds(
+                    frame_index=frame_index,
+                    source_fps=source_fps,
+                    is_live=self.reader.is_live,
+                    started_monotonic=started_monotonic,
+                )
                 output_frame = self._handle_frame(frame=frame, frame_index=frame_index, timestamp_seconds=timestamp_seconds)
                 annotate_fps(output_frame, self.fps_counter.tick())
 
@@ -273,46 +279,11 @@ class AnalysisPipeline:
         raise ValueError(f"Unsupported pipeline mode: {self.mode}")
 
     def _render_analysis_overlay(self, result: ProcessResult) -> np.ndarray:
-        frame = self.detector.annotate(result.frame_packet.frame, result.detection_result) if self.detector else result.frame_packet.frame.copy()
-        self._draw_roi(frame, self.roi)
-
-        if (
-            result.error_message is not None
-            or result.state_snapshot is None
-            or result.focus_estimate is None
-            or result.summary is None
-        ):
-            cv2.putText(
-                frame,
-                result.error_message or "analysis result unavailable",
-                (12, 58),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2,
-                cv2.LINE_AA,
-            )
-            return frame
-
-        lines = [
-            f"State: {result.state_snapshot.current_state.value}",
-            f"Focus: {result.focus_estimate.focus_score:.1f} ({result.focus_estimate.focus_level.value})",
-            f"Present: {result.summary.total_present_duration_sec:.1f}s",
-            f"Away: {result.summary.total_away_duration_sec:.1f}s",
-            f"Studying: {result.summary.total_studying_duration_sec:.1f}s",
-        ]
-        for index, line in enumerate(lines):
-            cv2.putText(
-                frame,
-                line,
-                (12, 58 + (index * 26)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2,
-                cv2.LINE_AA,
-            )
-        return frame
+        return render_analysis_preview(
+            result=result,
+            roi=self.roi,
+            detector=self.detector,
+        )
 
     @staticmethod
     def _draw_roi(frame: np.ndarray, roi: ROI) -> None:
@@ -324,3 +295,76 @@ class AnalysisPipeline:
         if getattr(self.reader, "camera_index", None) is not None:
             return SourceType.CAMERA
         return SourceType.FILE
+
+
+def render_analysis_preview(
+    *,
+    result: ProcessResult,
+    roi: ROI,
+    detector: AIDetector | None,
+    draw_roi: bool = True,
+) -> np.ndarray:
+    """Render a lightweight preview frame for CLI and web MJPEG consumers."""
+    base_frame = result.frame_packet.frame.copy()
+    frame = detector.annotate(base_frame, result.detection_result) if detector else base_frame
+    if draw_roi:
+        AnalysisPipeline._draw_roi(frame, roi)
+
+    if (
+        result.error_message is not None
+        or result.state_snapshot is None
+        or result.focus_estimate is None
+        or result.summary is None
+    ):
+        cv2.putText(
+            frame,
+            result.error_message or "analysis result unavailable",
+            (12, 58),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        return frame
+
+    lines = [
+        f"State: {result.state_snapshot.current_state.value}",
+        f"Focus: {result.focus_estimate.focus_score:.1f} ({result.focus_estimate.focus_level.value})",
+        f"Present: {result.summary.total_present_duration_sec:.1f}s",
+        f"Away: {result.summary.total_away_duration_sec:.1f}s",
+        f"Studying: {result.summary.total_studying_duration_sec:.1f}s",
+    ]
+    for index, line in enumerate(lines):
+        cv2.putText(
+            frame,
+            line,
+            (12, 58 + (index * 26)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+    return frame
+
+
+def calculate_timestamp_seconds(
+    *,
+    frame_index: int,
+    source_fps: float,
+    is_live: bool,
+    started_monotonic: float,
+    now_monotonic: float | None = None,
+) -> float:
+    """Return frame timestamp in seconds for file and live sources.
+
+    File sources follow the media timeline. Live sources follow elapsed wall-clock
+    time so downstream duration counters match real time even when processing FPS
+    drops below the camera/stream's advertised FPS.
+    """
+    if is_live:
+        current_monotonic = perf_counter() if now_monotonic is None else now_monotonic
+        return max(0.0, current_monotonic - started_monotonic)
+
+    return frame_index / max(source_fps, 1e-6)

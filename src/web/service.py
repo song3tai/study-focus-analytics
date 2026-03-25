@@ -8,8 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import threading
-from time import sleep
+from time import perf_counter, sleep
 from typing import Any
+
+import cv2
+import numpy as np
 
 from src.config import AppConfig
 from src.core.enums import SourceType
@@ -17,6 +20,7 @@ from src.core.models import FramePacket, ProcessResult
 from src.inference.ai_detector import AIDetector
 from src.io.video_reader import FrameSource, create_frame_source
 from src.pipeline import LocalAnalysisPipeline, PipelineConfig
+from src.pipeline.analysis_pipeline import calculate_timestamp_seconds, render_analysis_preview
 from src.utils import project_root, resolve_input_path
 from src.web.websocket_manager import WebSocketManager
 
@@ -70,6 +74,8 @@ class AnalysisWebService:
         self._last_error: str | None = None
         self._latest_result: ProcessResult | None = None
         self._latest_summary: dict[str, Any] | None = None
+        self._latest_preview_jpeg: bytes | None = None
+        self._active_reader: FrameSource | None = None
 
     def bind_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -104,6 +110,7 @@ class AnalysisWebService:
             self._last_error = None
             self._latest_result = None
             self._latest_summary = None
+            self._latest_preview_jpeg = None
             self._thread = threading.Thread(
                 target=self._run_loop,
                 kwargs={
@@ -128,8 +135,14 @@ class AnalysisWebService:
             self._session_state = "stopping"
             self._stop_event.set()
             thread = self._thread
+            active_reader = self._active_reader
 
         self._publish_status("stopping")
+        if active_reader is not None:
+            try:
+                active_reader.release()
+            except Exception:
+                pass
         if thread is not None and thread.is_alive():
             thread.join(timeout=5.0)
 
@@ -144,6 +157,7 @@ class AnalysisWebService:
             self._running = False
             self._thread = None
             self._session_state = "idle" if self._last_error is None else "error"
+            self._latest_preview_jpeg = None
 
         self._publish_status("stopped")
         return True, "analysis session stopped"
@@ -180,10 +194,23 @@ class AnalysisWebService:
     def get_current_timestamp(self) -> str:
         return self._utc_now()
 
+    def get_latest_preview_jpeg(self) -> bytes | None:
+        with self._lock:
+            return self._latest_preview_jpeg
+
+    def preview_stream(self):
+        """Yield an MJPEG stream for the latest rendered analysis preview."""
+        while True:
+            frame_bytes = self.get_latest_preview_jpeg() or self._build_placeholder_jpeg()
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+            sleep(0.2)
+
     def _run_loop(self, *, source_type: str, source: str, debug: bool) -> None:
         reader: FrameSource | None = None
         try:
             reader = self._create_frame_source(source_type=source_type, source=source)
+            with self._lock:
+                self._active_reader = reader
             detector = AIDetector(
                 model_name=self.config.yolo_model_name,
                 conf_threshold=self.config.yolo_conf_threshold,
@@ -202,6 +229,7 @@ class AnalysisWebService:
 
             frame_index = 0
             source_fps = reader.fps()
+            started_monotonic = perf_counter()
             while not self._stop_event.is_set():
                 ok, frame = reader.read_frame()
                 if not ok:
@@ -210,7 +238,12 @@ class AnalysisWebService:
                         continue
                     break
 
-                timestamp_seconds = frame_index / max(source_fps, 1e-6)
+                timestamp_seconds = calculate_timestamp_seconds(
+                    frame_index=frame_index,
+                    source_fps=source_fps,
+                    is_live=reader.is_live,
+                    started_monotonic=started_monotonic,
+                )
                 frame_packet = FramePacket(
                     frame_id=frame_index,
                     timestamp=timestamp_seconds,
@@ -229,9 +262,16 @@ class AnalysisWebService:
                     frame_packet=frame_packet,
                     detection_result=detection_result,
                 )
+                preview_frame = render_analysis_preview(
+                    result=result,
+                    roi=roi,
+                    detector=detector,
+                    draw_roi=False,
+                )
                 with self._lock:
                     self._latest_result = result
                     self._latest_summary = result.summary.to_dict() if result.summary is not None else None
+                    self._latest_preview_jpeg = self._encode_preview_frame(preview_frame)
                 self._publish_result(result)
                 frame_index += 1
         except Exception as exc:
@@ -246,6 +286,8 @@ class AnalysisWebService:
             with self._lock:
                 self._running = False
                 self._thread = None
+                self._active_reader = None
+                self._latest_preview_jpeg = None
                 if self._session_state != "error":
                     self._session_state = "idle"
             self._publish_status("idle" if self._last_error is None else "error")
@@ -358,3 +400,30 @@ class AnalysisWebService:
     @staticmethod
     def _utc_now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    @staticmethod
+    def _encode_preview_frame(frame: np.ndarray) -> bytes | None:
+        success, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        if not success:
+            return None
+        return encoded.tobytes()
+
+    def _build_placeholder_jpeg(self) -> bytes:
+        with self._lock:
+            session_state = self._session_state
+            source_type = self._source_type or "none"
+            last_error = self._last_error
+
+        frame = np.zeros((540, 960, 3), dtype=np.uint8)
+        frame[:] = (22, 28, 36)
+        cv2.putText(frame, "Study Focus Analytics", (28, 64), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (235, 235, 235), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"session_state: {session_state}", (28, 128), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (110, 210, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"source_type: {source_type}", (28, 168), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (110, 210, 255), 2, cv2.LINE_AA)
+        message = "waiting for analysis preview..."
+        if session_state == "error" and last_error:
+            message = f"error: {last_error}"
+        elif session_state in {"starting", "running"}:
+            message = "video preview not ready yet"
+        cv2.putText(frame, message[:80], (28, 242), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+        encoded = self._encode_preview_frame(frame)
+        return encoded or b""

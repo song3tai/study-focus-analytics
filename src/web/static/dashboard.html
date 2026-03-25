@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Study Focus Analytics Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css?v=4">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar">
+      <section class="status-panel card">
+        <h1>Study Focus Analytics</h1>
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="label">Service</span>
+            <span id="service-running" class="status-pill neutral">unknown</span>
+          </div>
+          <div class="status-item">
+            <span class="label">WebSocket</span>
+            <span id="ws-status" class="status-pill neutral">connecting</span>
+          </div>
+          <div class="status-item">
+            <span class="label">Session</span>
+            <span id="session-state" class="status-pill neutral">idle</span>
+          </div>
+          <div class="status-item">
+            <span class="label">Source</span>
+            <span id="source-type" class="status-pill neutral">none</span>
+          </div>
+        </div>
+        <p id="status-meta" class="muted">Waiting for service status…</p>
+      </section>
+
+      <section class="control-panel card">
+        <div class="control-fields">
+          <label>
+            <span>Source Type</span>
+            <select id="source-type-input">
+              <option value="camera">camera</option>
+              <option value="video_file" selected>video_file</option>
+              <option value="rtsp">rtsp</option>
+            </select>
+          </label>
+          <label>
+            <span>Source</span>
+            <input id="source-input" type="text" value="input/sample.mp4" placeholder="input/sample.mp4 or 0">
+          </label>
+        </div>
+        <div class="control-actions">
+          <button id="start-button" class="primary">Start</button>
+          <button id="stop-button" class="danger">Stop</button>
+          <button id="refresh-button">Refresh</button>
+        </div>
+      </section>
+    </header>
+
+    <section id="global-error" class="global-error hidden"></section>
+
+    <main class="main-grid">
+      <section class="video-panel card">
+        <div class="section-head">
+          <h2>Preview</h2>
+          <span class="muted">Auxiliary MJPEG stream</span>
+        </div>
+        <div class="video-stage">
+          <img id="video-preview" alt="analysis preview stream">
+          <div id="video-overlay" class="video-overlay hidden" style="display: none;">Loading preview...</div>
+        </div>
+      </section>
+
+      <section class="analysis-panel card">
+        <div class="section-head">
+          <h2>Current Analysis</h2>
+          <span id="last-updated" class="muted">No process result yet</span>
+        </div>
+        <div class="analysis-grid">
+          <article class="metric-card state-card">
+            <span class="metric-label">Current State</span>
+            <span id="current-state" class="state-chip neutral">unknown</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Focus Score</span>
+            <span id="focus-score" class="metric-value">--</span>
+            <div class="progress-track"><div id="focus-bar" class="progress-bar"></div></div>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Focus Level</span>
+            <span id="focus-level" class="status-pill neutral">unknown</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">State Duration</span>
+            <span id="state-duration" class="metric-value">--</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Away Count</span>
+            <span id="away-count" class="metric-value">0</span>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <section class="summary-grid">
+      <article class="summary-card card">
+        <span class="metric-label">Total Duration</span>
+        <span id="total-duration" class="metric-value">--</span>
+      </article>
+      <article class="summary-card card">
+        <span class="metric-label">Total Present</span>
+        <span id="total-present" class="metric-value">--</span>
+      </article>
+      <article class="summary-card card">
+        <span class="metric-label">Total Away</span>
+        <span id="total-away" class="metric-value">--</span>
+      </article>
+      <article class="summary-card card">
+        <span class="metric-label">Average Focus</span>
+        <span id="average-focus" class="metric-value">--</span>
+      </article>
+    </section>
+
+    <details class="details-card card">
+      <summary>Explanation / Debug</summary>
+      <div class="details-grid">
+        <div>
+          <h3>Reasons</h3>
+          <div id="reasons-list" class="tag-list"></div>
+        </div>
+        <div>
+          <h3>Explanation</h3>
+          <dl class="debug-list">
+            <div><dt>person_detected</dt><dd id="person-detected">--</dd></div>
+            <div><dt>person_in_roi</dt><dd id="person-in-roi">--</dd></div>
+            <div><dt>roi_overlap_ratio</dt><dd id="roi-overlap">--</dd></div>
+            <div><dt>stability_score</dt><dd id="stability-score">--</dd></div>
+            <div><dt>motion_delta</dt><dd id="motion-delta">--</dd></div>
+            <div><dt>session_duration</dt><dd id="session-duration">--</dd></div>
+            <div><dt>current_away_duration</dt><dd id="current-away-duration">--</dd></div>
+            <div><dt>studying_total</dt><dd id="studying-total">--</dd></div>
+            <div><dt>max_focus</dt><dd id="max-focus">--</dd></div>
+            <div><dt>min_focus</dt><dd id="min-focus">--</dd></div>
+          </dl>
+        </div>
+        <div>
+          <h3>Debug</h3>
+          <dl class="debug-list">
+            <div><dt>frame_id</dt><dd id="frame-id">--</dd></div>
+            <div><dt>timestamp</dt><dd id="frame-timestamp">--</dd></div>
+            <div><dt>source_name</dt><dd id="source-name">--</dd></div>
+            <div><dt>fps_hint</dt><dd id="fps-hint">--</dd></div>
+            <div><dt>inference_ms</dt><dd id="inference-ms">--</dd></div>
+            <div><dt>last_frame_id</dt><dd id="status-last-frame-id">--</dd></div>
+            <div><dt>last_timestamp</dt><dd id="status-last-timestamp">--</dd></div>
+            <div><dt>last_error</dt><dd id="status-last-error">--</dd></div>
+            <div><dt>error_message</dt><dd id="process-error-message">--</dd></div>
+          </dl>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <script src="/static/dashboard.js?v=4"></script>
+</body>
+</html>
