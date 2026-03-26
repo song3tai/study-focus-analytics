@@ -30,6 +30,8 @@ This directory contains automated tests for the V1 analysis pipeline and its sup
 cd /home/song3tai/study-focus-analytics
 source .venv/bin/activate
 python3 -m pytest -q
+
+The repository disables pytest's cache provider by default, so test runs should not create `.pytest_cache` or `pytest-cache-files-*` directories.
 ```
 
 If test collection fails with `ModuleNotFoundError: No module named 'cv2'`, install dependencies from `requirements.txt` first.

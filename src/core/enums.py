@@ -17,6 +17,17 @@ class SourceType(str, Enum):
         return [item.value for item in cls]
 
 
+class AnalysisMode(str, Enum):
+    """Analysis execution mode."""
+
+    REALTIME = "realtime"
+    FAST = "fast"
+
+    @classmethod
+    def values(cls) -> list[str]:
+        return [item.value for item in cls]
+
+
 class BehaviorState(str, Enum):
     """Behavior state machine states."""
 

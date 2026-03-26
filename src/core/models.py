@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from src.core.enums import SourceType, BehaviorState, FocusLevel, EventType
+from src.core.enums import AnalysisMode, SourceType, BehaviorState, FocusLevel, EventType
 
 
 # Geometry models
@@ -368,6 +368,50 @@ class AnalysisSummary:
             "max_focus_score": self.max_focus_score,
             "min_focus_score": self.min_focus_score,
             "focus_samples": self.focus_samples,
+        }
+
+
+@dataclass(slots=True)
+class SessionResult:
+    session_id: str
+    source_type: SourceType
+    source_name: str
+    analysis_mode: AnalysisMode
+    summary: AnalysisSummary
+    events: list[BehaviorEvent] = field(default_factory=list)
+    timeline: list[dict[str, Any]] = field(default_factory=list)
+    duration_sec: float = 0.0
+
+    @classmethod
+    def empty(
+        cls,
+        *,
+        session_id: str,
+        source_type: SourceType,
+        source_name: str,
+        analysis_mode: AnalysisMode,
+    ) -> "SessionResult":
+        return cls(
+            session_id=session_id,
+            source_type=source_type,
+            source_name=source_name,
+            analysis_mode=analysis_mode,
+            summary=AnalysisSummary(),
+            events=[],
+            timeline=[],
+            duration_sec=0.0,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "session_id": self.session_id,
+            "source_type": self.source_type.value,
+            "source_name": self.source_name,
+            "analysis_mode": self.analysis_mode.value,
+            "summary": self.summary.to_dict(),
+            "events": [event.to_dict() for event in self.events],
+            "timeline": list(self.timeline),
+            "duration_sec": self.duration_sec,
         }
 
 

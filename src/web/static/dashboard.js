@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   status: null,
   latest: null,
   summary: null,
@@ -10,6 +10,9 @@ const state = {
   videoBlockedByServiceError: false,
   videoLoading: false,
 };
+
+const SESSION_RESULT_STORAGE_KEY = "study_focus_session_result";
+const SESSION_RESULT_PAGE_URL = "/static/session_result.html";
 
 const els = {
   serviceRunning: document.getElementById("service-running"),
@@ -54,6 +57,7 @@ const els = {
   sourceTypeInput: document.getElementById("source-type-input"),
   sourceInput: document.getElementById("source-input"),
   startButton: document.getElementById("start-button"),
+  fastButton: document.getElementById("fast-button"),
   stopButton: document.getElementById("stop-button"),
   refreshButton: document.getElementById("refresh-button"),
 };
@@ -132,13 +136,18 @@ function renderStatus() {
   setPill(els.wsStatus, state.wsState, stateTone(state.wsState));
   setPill(els.sessionState, status.session_state || "idle", stateTone(status.session_state));
   setPill(els.sourceType, status.source_type || "none", stateTone(status.source_type));
-  els.statusMeta.textContent = `source=${status.source || "--"} · latest=${status.has_latest_result ? "yes" : "no"} · started_at=${status.started_at || "--"}`;
+  els.statusMeta.textContent = `source=${status.source || "--"} | latest=${status.has_latest_result ? "yes" : "no"} | started_at=${status.started_at || "--"}`;
   els.statusLastFrameId.textContent = status.last_frame_id ?? "--";
   els.statusLastTimestamp.textContent = status.last_timestamp ?? "--";
   els.statusLastError.textContent = status.last_error || "--";
 
   const sessionState = status.session_state || "idle";
   els.startButton.disabled = sessionState === "running" || sessionState === "starting" || sessionState === "stopping";
+  els.fastButton.disabled =
+    sessionState === "running" ||
+    sessionState === "starting" ||
+    sessionState === "stopping" ||
+    els.sourceTypeInput.value !== "video_file";
   els.stopButton.disabled = sessionState === "idle" || sessionState === "stopping" || sessionState === "error";
 }
 
@@ -150,6 +159,7 @@ function syncSourceInputState() {
   if (isCamera) {
     els.sourceInput.value = "";
     els.sourceInput.placeholder = "camera source is not required";
+    renderStatus();
     return;
   }
 
@@ -160,6 +170,28 @@ function syncSourceInputState() {
     sourceType === "video_file"
       ? "input/sample.mp4"
       : "rtsp://your-stream-address";
+  renderStatus();
+}
+
+function persistSessionResult(result) {
+  try {
+    window.sessionStorage.setItem(SESSION_RESULT_STORAGE_KEY, JSON.stringify(result));
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function openSessionResultPage(result) {
+  if (!result) {
+    return false;
+  }
+  if (!persistSessionResult(result)) {
+    setGlobalError("Unable to open the result page because session storage is unavailable.");
+    return false;
+  }
+  window.location.href = SESSION_RESULT_PAGE_URL;
+  return true;
 }
 
 function renderSummary() {
@@ -405,10 +437,45 @@ async function startAnalysis() {
   }
 }
 
+async function runFastAnalysis() {
+  const sourceType = els.sourceTypeInput.value;
+  const sourceValue = els.sourceInput.value.trim();
+
+  if (sourceType !== "video_file") {
+    setGlobalError("Fast analysis is only available for video files.");
+    return;
+  }
+
+  if (!sourceValue) {
+    setGlobalError("Please provide a video file path for fast analysis.");
+    return;
+  }
+
+  try {
+    setGlobalError(null);
+    const response = await fetchJson("/analysis/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_type: "video_file",
+        source: sourceValue,
+        mode: "fast",
+      }),
+    });
+    openSessionResultPage(response.data);
+  } catch (error) {
+    setGlobalError(error.message);
+  }
+}
+
 async function stopAnalysis() {
   try {
     setGlobalError(null);
-    await fetchJson("/analysis/stop", { method: "POST" });
+    const response = await fetchJson("/analysis/stop", { method: "POST" });
+    if (response.session_result) {
+      openSessionResultPage(response.session_result);
+      return;
+    }
     await initializeData();
     syncVideoPreviewWithSession(false);
   } catch (error) {
@@ -462,6 +529,7 @@ els.videoPreview.addEventListener("error", () => {
 });
 
 els.startButton.addEventListener("click", startAnalysis);
+els.fastButton.addEventListener("click", runFastAnalysis);
 els.stopButton.addEventListener("click", stopAnalysis);
 els.refreshButton.addEventListener("click", refreshAll);
 els.sourceTypeInput.addEventListener("change", syncSourceInputState);
@@ -477,3 +545,7 @@ initializeData()
     syncVideoPreviewWithSession(false);
     connectWebSocket();
   });
+
+
+
+

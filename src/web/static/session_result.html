@@ -1,0 +1,88 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Result | Study Focus Analytics</title>
+  <link rel="stylesheet" href="/static/session_result.css?v=2">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="page-top">
+      <div>
+        <p class="eyebrow">Study Focus Analytics</p>
+        <h1>Session Result</h1>
+        <p class="muted">A single result view for both fast analysis and realtime sessions.</p>
+      </div>
+      <a class="back-link" href="/">Back to Dashboard</a>
+    </header>
+
+    <section id="empty-state" class="card empty-state hidden">
+      <h2>No session result available</h2>
+      <p class="muted">Run a fast analysis or stop a realtime session first, then open this page again.</p>
+    </section>
+
+    <main id="result-page" class="result-page hidden">
+      <section class="card header-card">
+        <div class="section-head section-head-compact">
+          <div>
+            <h2 id="result-title">Analysis Result</h2>
+          </div>
+          <span id="mode-badge" class="status-pill neutral">-</span>
+        </div>
+        <p id="result-subtitle" class="result-subtitle muted">-</p>
+        <div id="session-meta" class="meta-grid"></div>
+      </section>
+
+      <section class="card insight-card">
+        <div class="section-head section-head-compact">
+          <h2>Result Insight</h2>
+          <span class="muted">Quick interpretation</span>
+        </div>
+        <p id="result-insight" class="insight-text">-</p>
+      </section>
+
+      <section class="card summary-card-shell">
+        <div class="section-head">
+          <h2>Primary Summary</h2>
+          <span class="muted">The key metrics to understand this session</span>
+        </div>
+        <div id="primary-summary-grid" class="summary-grid primary-summary-grid"></div>
+
+        <div class="secondary-summary-block">
+          <div class="section-subhead">
+            <h3>Additional Metrics</h3>
+            <span class="muted">Supporting indicators</span>
+          </div>
+          <div id="secondary-summary-grid" class="secondary-grid"></div>
+        </div>
+      </section>
+
+      <section class="content-grid">
+        <section class="card">
+          <div class="section-head">
+            <h2>Events</h2>
+            <span id="events-count" class="muted">0 events</span>
+          </div>
+          <div id="events-list" class="stack-list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2>Timeline</h2>
+            <span class="muted">Simple behavior segments</span>
+          </div>
+          <div id="timeline-list" class="stack-list"></div>
+        </section>
+      </section>
+
+      <details class="card debug-card">
+        <summary>Debug Details</summary>
+        <div id="debug-grid" class="debug-grid"></div>
+      </details>
+    </main>
+  </div>
+
+  <script src="/static/session_result.js?v=2"></script>
+</body>
+</html>

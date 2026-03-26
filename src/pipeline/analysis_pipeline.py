@@ -1,10 +1,11 @@
-"""Formal pipeline implementations for Study Focus Analytics."""
+﻿"""Formal pipeline implementations for Study Focus Analytics."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
 from time import perf_counter, sleep
+from uuid import uuid4
 
 import cv2
 import numpy as np
@@ -15,13 +16,16 @@ from src.behavior.focus_estimator import FocusEstimator
 from src.behavior.scene_features import SceneFeatureExtractor
 from src.behavior.state_tracker import BehaviorStateTracker
 from src.config import AppConfig
-from src.core.enums import SourceType
+from src.core.enums import AnalysisMode, SourceType
 from src.core.models import (
+    AnalysisSummary,
+    BehaviorEvent,
     DetectionResult,
     FrameFeatures,
     FramePacket,
     ProcessResult,
     ROI,
+    SessionResult,
 )
 from src.inference.ai_detector import AIDetector
 from src.io.video_reader import FrameSource
@@ -49,8 +53,11 @@ class LocalAnalysisPipeline:
     focus_estimator: FocusEstimator = field(default_factory=FocusEstimator)
     event_builder: EventBuilder = field(default_factory=EventBuilder)
     analytics_aggregator: AnalyticsAggregator = field(default_factory=AnalyticsAggregator)
+    analysis_mode: AnalysisMode = AnalysisMode.REALTIME
+    session_id: str = field(default_factory=lambda: str(uuid4()))
     _latest_result: ProcessResult | None = field(default=None, init=False, repr=False)
     _previous_features: FrameFeatures | None = field(default=None, init=False, repr=False)
+    _events: list[BehaviorEvent] = field(default_factory=list, init=False, repr=False)
 
     def process_frame(
         self,
@@ -90,6 +97,8 @@ class LocalAnalysisPipeline:
 
         if self.config.keep_latest_result:
             self._latest_result = result
+        if result.events:
+            self._events.extend(result.events)
 
         self._log_debug(result)
         return result
@@ -99,11 +108,35 @@ class LocalAnalysisPipeline:
         self.state_tracker.reset()
         self.focus_estimator.reset()
         self.analytics_aggregator = AnalyticsAggregator()
+        self.session_id = str(uuid4())
         self._latest_result = None
         self._previous_features = None
+        self._events = []
 
     def get_latest_result(self) -> ProcessResult | None:
         return self._latest_result
+
+    def build_session_result(self) -> SessionResult:
+        latest_result = self._latest_result
+        if latest_result is None:
+            return SessionResult.empty(
+                session_id=self.session_id,
+                source_type=SourceType.FILE,
+                source_name="unknown",
+                analysis_mode=self.analysis_mode,
+            )
+
+        summary = latest_result.summary or AnalysisSummary()
+        return SessionResult(
+            session_id=self.session_id,
+            source_type=latest_result.frame_packet.source_type,
+            source_name=latest_result.frame_packet.source_name,
+            analysis_mode=self.analysis_mode,
+            summary=summary,
+            events=list(self._events),
+            timeline=[],
+            duration_sec=summary.total_duration_sec,
+        )
 
     def _log_debug(self, result: ProcessResult) -> None:
         if not self.config.enable_debug_logging:
@@ -143,7 +176,13 @@ class LocalAnalysisPipeline:
 
 @dataclass
 class AnalysisPipeline:
-    """Coordinate frame input, analysis, preview rendering, and output writing."""
+    """Coordinate frame input, analysis, preview rendering, and output writing.
+
+    Note:
+        `mode` here means pipeline behavior selection (`detect` vs `analyze`).
+        It is different from `AnalysisMode`, which describes execution cadence
+        (`realtime` vs `fast`) for session-level workflows.
+    """
 
     reader: FrameSource
     config: AppConfig
@@ -368,3 +407,10 @@ def calculate_timestamp_seconds(
         return max(0.0, current_monotonic - started_monotonic)
 
     return frame_index / max(source_fps, 1e-6)
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-"""Runtime service for the local analysis web boundary."""
+﻿"""Runtime service for the local analysis web boundary."""
 
 from __future__ import annotations
 
@@ -14,9 +14,11 @@ from typing import Any
 import cv2
 import numpy as np
 
+from src.app.analysis_runner import run_fast_analysis
+from src.app.session_result_builder import finalize_session_result
 from src.config import AppConfig
-from src.core.enums import SourceType
-from src.core.models import FramePacket, ProcessResult
+from src.core.enums import AnalysisMode, SourceType
+from src.core.models import FramePacket, ProcessResult, SessionResult
 from src.inference.ai_detector import AIDetector
 from src.io.video_reader import FrameSource, create_frame_source
 from src.pipeline import LocalAnalysisPipeline, PipelineConfig
@@ -76,6 +78,8 @@ class AnalysisWebService:
         self._latest_summary: dict[str, Any] | None = None
         self._latest_preview_jpeg: bytes | None = None
         self._active_reader: FrameSource | None = None
+        self._active_pipeline: LocalAnalysisPipeline | None = None
+        self._last_session_result: SessionResult | None = None
 
     def bind_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -111,6 +115,8 @@ class AnalysisWebService:
             self._latest_result = None
             self._latest_summary = None
             self._latest_preview_jpeg = None
+            self._active_pipeline = None
+            self._last_session_result = None
             self._thread = threading.Thread(
                 target=self._run_loop,
                 kwargs={
@@ -126,11 +132,11 @@ class AnalysisWebService:
         self._publish_status("starting")
         return True, "analysis session starting"
 
-    def stop(self) -> tuple[bool, str]:
+    def stop(self) -> tuple[bool, str, SessionResult | None]:
         thread: threading.Thread | None = None
         with self._lock:
             if not self._running and self._session_state == "idle":
-                return True, "analysis session is already stopped"
+                return True, "analysis session is already stopped", None
 
             self._session_state = "stopping"
             self._stop_event.set()
@@ -152,15 +158,16 @@ class AnalysisWebService:
                 self._session_state = "error"
                 self._running = False
                 self._publish_error("analysis session did not stop cleanly")
-                return False, "analysis session did not stop cleanly"
+                return False, "analysis session did not stop cleanly", None
 
             self._running = False
             self._thread = None
             self._session_state = "idle" if self._last_error is None else "error"
             self._latest_preview_jpeg = None
+            session_result = self._last_session_result
 
         self._publish_status("stopped")
-        return True, "analysis session stopped"
+        return True, "analysis session stopped", session_result
 
     def shutdown(self) -> None:
         self.stop()
@@ -191,6 +198,20 @@ class AnalysisWebService:
         with self._lock:
             return dict(self._latest_summary) if self._latest_summary is not None else None
 
+    def get_last_session_result(self) -> SessionResult | None:
+        with self._lock:
+            return self._last_session_result
+
+    def run_analysis(self, *, source_type: str, source: str, mode: str) -> SessionResult:
+        """Run a synchronous offline analysis request for one local file."""
+        normalized_source_type = source_type.strip().lower()
+        normalized_mode = mode.strip().lower()
+        if normalized_source_type != "video_file":
+            raise ValueError("only video_file is supported for /analysis/run")
+        if normalized_mode != AnalysisMode.FAST.value:
+            raise ValueError("only fast mode is supported for /analysis/run")
+        return run_fast_analysis(source)
+
     def get_current_timestamp(self) -> str:
         return self._utc_now()
 
@@ -207,6 +228,7 @@ class AnalysisWebService:
 
     def _run_loop(self, *, source_type: str, source: str, debug: bool) -> None:
         reader: FrameSource | None = None
+        pipeline: LocalAnalysisPipeline | None = None
         try:
             reader = self._create_frame_source(source_type=source_type, source=source)
             with self._lock:
@@ -220,9 +242,12 @@ class AnalysisWebService:
             pipeline = LocalAnalysisPipeline(
                 roi=roi,
                 config=PipelineConfig(enable_debug_logging=debug),
+                analysis_mode=AnalysisMode.REALTIME,
             )
+            pipeline.reset()
 
             with self._lock:
+                self._active_pipeline = pipeline
                 self._session_state = "running"
 
             self._publish_status("running")
@@ -280,6 +305,11 @@ class AnalysisWebService:
                 self._session_state = "error"
             self._publish_error(str(exc))
         finally:
+            if pipeline is not None and pipeline.get_latest_result() is not None:
+                session_result = finalize_session_result(pipeline)
+                with self._lock:
+                    self._last_session_result = session_result
+
             if reader is not None:
                 reader.release()
 
@@ -287,6 +317,7 @@ class AnalysisWebService:
                 self._running = False
                 self._thread = None
                 self._active_reader = None
+                self._active_pipeline = None
                 self._latest_preview_jpeg = None
                 if self._session_state != "error":
                     self._session_state = "idle"

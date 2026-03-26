@@ -431,6 +431,8 @@ curl -Method POST http://127.0.0.1:8000/analysis/start `
 ```bash
 source .venv/bin/activate
 python -m pytest tests -q
+
+Note: this project disables pytest's cache provider by default to avoid creating broken cache temp directories in this Windows workspace.
 python src/main.py --input sample.mp4
 python src/main.py --input sample.mp4 --mode detect
 python src/main.py --camera

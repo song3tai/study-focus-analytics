@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Study Focus Analytics Dashboard</title>
-  <link rel="stylesheet" href="/static/dashboard.css?v=4">
+  <link rel="stylesheet" href="/static/dashboard.css?v=5">
 </head>
 <body>
   <div class="app-shell">
@@ -29,7 +29,7 @@
             <span id="source-type" class="status-pill neutral">none</span>
           </div>
         </div>
-        <p id="status-meta" class="muted">Waiting for service status…</p>
+        <p id="status-meta" class="muted">Waiting for service status...</p>
       </section>
 
       <section class="control-panel card">
@@ -49,9 +49,11 @@
         </div>
         <div class="control-actions">
           <button id="start-button" class="primary">Start</button>
+          <button id="fast-button" class="accent-button">Run Fast</button>
           <button id="stop-button" class="danger">Stop</button>
           <button id="refresh-button">Refresh</button>
         </div>
+        <p class="control-hint muted">Start runs realtime analysis. Run Fast processes a video file offline and opens the result page.</p>
       </section>
     </header>
 
@@ -159,6 +161,7 @@
     </details>
   </div>
 
-  <script src="/static/dashboard.js?v=4"></script>
+  <script src="/static/dashboard.js?v=5"></script>
 </body>
 </html>
+

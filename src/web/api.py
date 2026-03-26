@@ -1,4 +1,4 @@
-"""FastAPI app exposing the local analysis web boundary."""
+﻿"""FastAPI app exposing the local analysis web boundary."""
 
 from __future__ import annotations
 
@@ -13,8 +13,11 @@ from src.web.schemas import (
     AnalysisStatusResponse,
     HealthResponse,
     LatestResultResponse,
+    RunAnalysisRequest,
+    RunAnalysisResponse,
     SimpleMessageResponse,
     StartAnalysisRequest,
+    StopAnalysisResponse,
     SummaryEnvelopeResponse,
 )
 from src.web.service import AnalysisWebService
@@ -75,13 +78,36 @@ def create_app(service: AnalysisWebService | None = None) -> FastAPI:
         status_code = 409 if "already active" in message else 400
         return JSONResponse(status_code=status_code, content=response.model_dump())
 
-    @app.post("/analysis/stop", response_model=SimpleMessageResponse)
-    async def stop_analysis() -> SimpleMessageResponse:
-        success, message = analysis_service.stop()
-        return SimpleMessageResponse(
+    @app.post("/analysis/run", response_model=RunAnalysisResponse)
+    async def run_analysis(request: RunAnalysisRequest) -> RunAnalysisResponse | JSONResponse:
+        """Run a synchronous offline analysis job for one local video file.
+
+        This endpoint intentionally blocks until the whole file has been
+        analyzed. That tradeoff is acceptable for the current V1.5 local-first
+        workflow; if analysis sessions become larger later, the API can evolve
+        toward task-style execution.
+        """
+        try:
+            result = analysis_service.run_analysis(
+                source_type=request.source_type,
+                source=request.source,
+                mode=request.mode,
+            )
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"message": str(exc)})
+        return RunAnalysisResponse(
+            data=result.to_dict(),
+            message="fast analysis completed",
+        )
+
+    @app.post("/analysis/stop", response_model=StopAnalysisResponse)
+    async def stop_analysis() -> StopAnalysisResponse:
+        success, message, session_result = analysis_service.stop()
+        return StopAnalysisResponse(
             success=success,
             message=message,
             session_state=analysis_service.get_status_payload()["session_state"],
+            session_result=session_result.to_dict() if session_result is not None else None,
         )
 
     @app.get("/analysis/latest", response_model=LatestResultResponse)

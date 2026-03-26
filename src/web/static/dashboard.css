@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: light;
   --bg: #f3f5f7;
   --panel: #ffffff;
@@ -179,6 +179,11 @@ button.primary {
   color: #fff;
 }
 
+button.accent-button {
+  background: #0f7b6c;
+  color: #fff;
+}
+
 button.danger {
   background: var(--danger);
   color: #fff;
@@ -201,6 +206,10 @@ button:disabled {
 
 .hidden {
   display: none;
+}
+
+.control-hint {
+  margin: 12px 0 0;
 }
 
 .main-grid {
@@ -356,3 +365,4 @@ button:disabled {
     flex-wrap: wrap;
   }
 }
+
